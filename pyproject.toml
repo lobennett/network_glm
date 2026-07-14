@@ -15,6 +15,10 @@ dependencies = [
     "numpy>=1.24",
     "statsmodels>=0.14",
     "matplotlib",
+    # pillow 12.3.0 has no cp313 manylinux2014 (glibc-2.17) wheel and fails to
+    # build from source on Sherlock's CentOS 7 hosts; 12.1.1 (the monolith's
+    # pinned version) has a working wheel.
+    "pillow==12.1.1",
     "seaborn",
     "img2pdf",
     "randomise-prep @ git+https://github.com/jmumford/randomise-prep.git",
