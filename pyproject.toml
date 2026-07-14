@@ -29,6 +29,11 @@ dependencies = [
 [project.scripts]
 network-glm = "network_glm.cli:main"
 
+[tool.hatch.metadata]
+# our companion packages (network_qa, bold-reliability-movies) and randomise-prep
+# are installed via git+ direct references
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/network_glm"]
 
