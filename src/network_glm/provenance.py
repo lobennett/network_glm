@@ -226,13 +226,9 @@ def write_run_manifest(
     """
     require_clean_tree(allow_dirty=allow_dirty)
 
-    # _jsonify lives in exclusions.base (reused here to keep one JSON-safe path).
-    # NETWORK_GLM LIFT-AND-SHIFT TODO: neuro_workflow.exclusions.base is not part
-    # of the Phase 1 copy groups (only analysis/core/utils.py -> network_glm.exclusions
-    # was copied, which has no _jsonify). Left pointing at the source monolith
-    # unresolved rather than guess-mapping it; needs a deliberate decision in a
-    # later phase (vendor _jsonify into network_glm, or depend on neuro_workflow).
-    from neuro_workflow.exclusions.base import _jsonify
+    # _jsonify keeps one JSON-safe serialization path; vendored into
+    # network_glm.exclusions alongside the other lockfile helpers.
+    from network_glm.exclusions import _jsonify
 
     if args is None:
         args_dict: Any = None
