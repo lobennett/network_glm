@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "network_glm"
+version = "0.1.0"
+description = "r01network first- and second-level task-fMRI GLMs (lev1/lev2) + cohort outlier detection"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0.3",
+    "nilearn>=0.12",
+    "nibabel>=5.0",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "statsmodels>=0.14",
+    "matplotlib",
+    "seaborn",
+    "img2pdf",
+    "randomise-prep @ git+https://github.com/jmumford/randomise-prep.git",
+    "network_qa @ git+https://github.com/lobennett/network_qa.git",
+    "bold-reliability-movies @ git+https://github.com/lobennett/bold_reliability_movies.git",
+]
+
+[project.scripts]
+network-glm = "network_glm.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/network_glm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
