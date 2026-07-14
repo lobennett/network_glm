@@ -1,0 +1,71 @@
+tr: 1.49
+dummy_scans: 7
+min_rt: 0.2
+expected_sessions: 5
+
+# N-back working memory task
+# Trial types: match, mismatch (crossed with delay: 1, 2)
+# The response_time regressor uses RT as duration (RTDur model).
+
+regressors:
+  mismatch_1back:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'mismatch' and delay == 1
+
+  match_1back:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'match' and delay == 1
+
+  mismatch_2back:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'mismatch' and delay == 2
+
+  match_2back:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'match' and delay == 2
+
+  response_time:
+    amplitude: 1
+    duration: response_time
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type != 'n/a' and trial_id == 'test_trial'
+
+  omission:
+    amplitude: omission
+    duration: duration
+    subset: null
+
+  commission:
+    amplitude: commission
+    duration: duration
+    subset: null
+
+  rt_fast:
+    amplitude: rt_too_fast
+    duration: duration
+    subset: null
+
+  break_with_performance_feedback:
+    amplitude: 1
+    duration: 10
+    subset: "trial_id == 'break_with_performance_feedback'"
+    events_query_min_coverage: 0.0
+
+contrasts:
+  twoBack-oneBack: "0.5 * (mismatch_2back + match_2back - mismatch_1back - match_1back)"
+  match-mismatch: "0.5 * (match_2back + match_1back - mismatch_2back - mismatch_1back)"
+  task-baseline: "0.25 * (mismatch_1back + match_1back + mismatch_2back + match_2back)"
+  response_time: "response_time"

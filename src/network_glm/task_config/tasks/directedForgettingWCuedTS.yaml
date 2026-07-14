@@ -1,0 +1,48 @@
+tr: 1.49
+dummy_scans: 7
+min_rt: 0.2
+expected_sessions: null
+
+# Directed Forgetting × cued task-switching.
+# test_trial trial_type = {con,pos,neg}_{tstay_cstay,tstay_cswitch,tswitch_cswitch}.
+
+regressors:
+  con_tstay_cstay:     {amplitude: 1, duration: 1, subset: "trial_type == 'con_tstay_cstay' and key_press == correct_response and response_time >= 0.2"}
+  con_tstay_cswitch:   {amplitude: 1, duration: 1, subset: "trial_type == 'con_tstay_cswitch' and key_press == correct_response and response_time >= 0.2"}
+  con_tswitch_cswitch: {amplitude: 1, duration: 1, subset: "trial_type == 'con_tswitch_cswitch' and key_press == correct_response and response_time >= 0.2"}
+  pos_tstay_cstay:     {amplitude: 1, duration: 1, subset: "trial_type == 'pos_tstay_cstay' and key_press == correct_response and response_time >= 0.2"}
+  pos_tstay_cswitch:   {amplitude: 1, duration: 1, subset: "trial_type == 'pos_tstay_cswitch' and key_press == correct_response and response_time >= 0.2"}
+  pos_tswitch_cswitch: {amplitude: 1, duration: 1, subset: "trial_type == 'pos_tswitch_cswitch' and key_press == correct_response and response_time >= 0.2"}
+  neg_tstay_cstay:     {amplitude: 1, duration: 1, subset: "trial_type == 'neg_tstay_cstay' and key_press == correct_response and response_time >= 0.2"}
+  neg_tstay_cswitch:   {amplitude: 1, duration: 1, subset: "trial_type == 'neg_tstay_cswitch' and key_press == correct_response and response_time >= 0.2"}
+  neg_tswitch_cswitch: {amplitude: 1, duration: 1, subset: "trial_type == 'neg_tswitch_cswitch' and key_press == correct_response and response_time >= 0.2"}
+  memory_and_cue:      {amplitude: 1, duration: duration, subset: "trial_id == 'test_directed_cue' or trial_id == 'test_switching_cue' or trial_id == 'test_four_letters'"}
+  response_time:       {amplitude: 1, duration: response_time, subset: "key_press == correct_response and response_time >= 0.2 and trial_id == 'test_trial' and trial_type != 'n/a'"}
+  omission:            {amplitude: omission,    duration: duration, subset: null}
+  commission:          {amplitude: commission,  duration: duration, subset: null}
+  rt_fast:             {amplitude: rt_too_fast, duration: duration, subset: null}
+  break_with_performance_feedback:
+    amplitude: 1
+    duration: duration
+    subset: "trial_id == 'break_with_performance_feedback'"
+    events_query_min_coverage: 0.0
+
+contrasts:
+  con_tstay_cstay:     "con_tstay_cstay"
+  con_tstay_cswitch:   "con_tstay_cswitch"
+  con_tswitch_cswitch: "con_tswitch_cswitch"
+  pos_tstay_cstay:     "pos_tstay_cstay"
+  pos_tstay_cswitch:   "pos_tstay_cswitch"
+  pos_tswitch_cswitch: "pos_tswitch_cswitch"
+  neg_tstay_cstay:     "neg_tstay_cstay"
+  neg_tstay_cswitch:   "neg_tstay_cswitch"
+  neg_tswitch_cswitch: "neg_tswitch_cswitch"
+  cue_switch_cost_DF_off:  "con_tstay_cswitch - con_tstay_cstay"
+  task_switch_cost_DF_off: "con_tswitch_cswitch - con_tstay_cswitch"
+  DF_neg_con_cuedTS_off:   "neg_tstay_cstay - con_tstay_cstay"
+  cue_switch_cost_pooled:  "1/3*(neg_tstay_cswitch + pos_tstay_cswitch + con_tstay_cswitch) - 1/3*(neg_tstay_cstay + pos_tstay_cstay + con_tstay_cstay)"
+  task_switch_cost_pooled: "1/3*(neg_tswitch_cswitch + pos_tswitch_cswitch + con_tswitch_cswitch) - 1/3*(neg_tstay_cswitch + pos_tstay_cswitch + con_tstay_cswitch)"
+  DF_neg_con_pooled:       "1/3*(neg_tstay_cstay + neg_tstay_cswitch + neg_tswitch_cswitch) - 1/3*(con_tstay_cstay + con_tstay_cswitch + con_tswitch_cswitch)"
+  interaction_cue_switch_cost:  "1/2*(neg_tstay_cswitch - con_tstay_cswitch) - 1/2*(neg_tstay_cstay - con_tstay_cstay)"
+  interaction_task_switch_cost: "1/2*(neg_tswitch_cswitch - con_tswitch_cswitch) - 1/2*(neg_tstay_cswitch - con_tstay_cswitch)"
+  task-baseline: "1/9*(neg_tswitch_cswitch + neg_tstay_cswitch + neg_tstay_cstay + pos_tswitch_cswitch + pos_tstay_cswitch + pos_tstay_cstay + con_tswitch_cswitch + con_tstay_cswitch + con_tstay_cstay)"

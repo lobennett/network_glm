@@ -1,0 +1,48 @@
+tr: 1.49
+dummy_scans: 7
+min_rt: 0.2
+expected_sessions: null
+
+# Stop-signal × Directed Forgetting.
+# go cells carry responses; stop cells (success/failure) are conditions of interest
+# (no correctness filter — stop trials are scored differently).
+# memory_and_cue models the memory-set + cue phase.
+
+regressors:
+  go_con: {amplitude: 1, duration: 1, subset: "trial_type == 'go_con' and key_press == correct_response and response_time >= 0.2"}
+  go_pos: {amplitude: 1, duration: 1, subset: "trial_type == 'go_pos' and key_press == correct_response and response_time >= 0.2"}
+  go_neg: {amplitude: 1, duration: 1, subset: "trial_type == 'go_neg' and key_press == correct_response and response_time >= 0.2"}
+  stop_success_con: {amplitude: 1, duration: 1, subset: "trial_type == 'stop_success_con'"}
+  stop_success_pos: {amplitude: 1, duration: 1, subset: "trial_type == 'stop_success_pos'"}
+  stop_success_neg: {amplitude: 1, duration: 1, subset: "trial_type == 'stop_success_neg'"}
+  stop_failure_con: {amplitude: 1, duration: 1, subset: "trial_type == 'stop_failure_con'"}
+  stop_failure_pos: {amplitude: 1, duration: 1, subset: "trial_type == 'stop_failure_pos'"}
+  stop_failure_neg: {amplitude: 1, duration: 1, subset: "trial_type == 'stop_failure_neg'"}
+  memory_and_cue:   {amplitude: 1, duration: duration, subset: "trial_id == 'test_stim' or trial_id == 'test_cue'"}
+  response_time:    {amplitude: 1, duration: response_time, subset: "key_press == correct_response and response_time >= 0.2 and trial_id == 'test_trial'"}
+  omission:         {amplitude: omission,    duration: duration, subset: null}
+  commission:       {amplitude: commission,  duration: duration, subset: null}
+  rt_fast:          {amplitude: rt_too_fast, duration: duration, subset: null}
+  break_with_performance_feedback:
+    amplitude: 1
+    duration: duration
+    subset: "trial_id == 'break_with_performance_feedback'"
+    events_query_min_coverage: 0.0
+
+contrasts:
+  go_con: "go_con"
+  go_pos: "go_pos"
+  go_neg: "go_neg"
+  stop_success_con: "stop_success_con"
+  stop_success_pos: "stop_success_pos"
+  stop_success_neg: "stop_success_neg"
+  stop_failure_con: "stop_failure_con"
+  stop_failure_pos: "stop_failure_pos"
+  stop_failure_neg: "stop_failure_neg"
+  stop_success_go_pooled: "1/3*(stop_success_con + stop_success_pos + stop_success_neg) - 1/3*(go_con + go_pos + go_neg)"
+  stop_failure_go_pooled: "1/3*(stop_failure_con + stop_failure_pos + stop_failure_neg) - 1/3*(go_con + go_pos + go_neg)"
+  stop_success_DF_interaction: "1/2*(stop_success_neg - go_neg) - 1/2*(stop_success_con - go_con)"
+  stop_failure_DF_interaction: "1/2*(stop_failure_neg - go_neg) - 1/2*(stop_failure_con - go_con)"
+  go_neg_con: "go_neg - go_con"
+  stop_success_con_go_con: "stop_success_con - go_con"
+  task-baseline: "1/10*(go_pos + go_neg + go_con + stop_success_pos + stop_success_neg + stop_success_con + stop_failure_pos + stop_failure_neg + stop_failure_con + memory_and_cue)"

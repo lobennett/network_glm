@@ -1,0 +1,73 @@
+tr: 1.49
+dummy_scans: 7
+min_rt: 0.2
+expected_sessions: 5
+
+# Cued task-switching paradigm
+# Trial types: tstay_cstay, tstay_cswitch, tswitch_cswitch, tn/a_cn/a
+# Regressors model correct, fast-enough responses for each switch condition.
+# The response_time regressor uses RT as duration (RTDur model).
+
+regressors:
+  task_stay_cue_stay:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'tstay_cstay'
+
+  task_stay_cue_switch:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'tstay_cswitch'
+
+  task_switch_cue_switch:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'tswitch_cswitch'
+
+  task_na_cue_na:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'tn/a_cn/a'
+
+  response_time:
+    amplitude: 1
+    duration: response_time
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type != 'tn/a_cn/a' and trial_id == 'test_trial'
+
+  omission:
+    amplitude: omission
+    duration: duration
+    subset: null
+
+  commission:
+    amplitude: commission
+    duration: duration
+    subset: null
+
+  rt_fast:
+    amplitude: rt_too_fast
+    duration: duration
+    subset: null
+
+  break_with_performance_feedback:
+    amplitude: 1
+    duration: 10
+    subset: "trial_id == 'break_with_performance_feedback'"
+    events_query_min_coverage: 0.0
+
+contrasts:
+  task_switch_cost: "task_switch_cue_switch - task_stay_cue_switch"
+  cue_switch_cost: "task_stay_cue_switch - task_stay_cue_stay"
+  task_switch_cue_switch-task_stay_cue_stay: "task_switch_cue_switch - task_stay_cue_stay"
+  task-baseline: "1/3 * (task_stay_cue_switch + task_stay_cue_stay + task_switch_cue_switch)"
+  response_time: "response_time"

@@ -1,0 +1,54 @@
+tr: 1.49
+dummy_scans: 7
+min_rt: 0.2
+expected_sessions: null
+
+# Flanker × Shape Matching. test_trial trial_type = {congruent,incongruent}_{SSS,SDD,SNN,DSD,DNN,DDD,DDS}.
+# Break here is 4 s (duration: duration handles it).
+
+regressors:
+  congruent_SSS:   {amplitude: 1, duration: 1, subset: "trial_type == 'congruent_SSS' and key_press == correct_response and response_time >= 0.2"}
+  congruent_SDD:   {amplitude: 1, duration: 1, subset: "trial_type == 'congruent_SDD' and key_press == correct_response and response_time >= 0.2"}
+  congruent_SNN:   {amplitude: 1, duration: 1, subset: "trial_type == 'congruent_SNN' and key_press == correct_response and response_time >= 0.2"}
+  congruent_DSD:   {amplitude: 1, duration: 1, subset: "trial_type == 'congruent_DSD' and key_press == correct_response and response_time >= 0.2"}
+  congruent_DNN:   {amplitude: 1, duration: 1, subset: "trial_type == 'congruent_DNN' and key_press == correct_response and response_time >= 0.2"}
+  congruent_DDD:   {amplitude: 1, duration: 1, subset: "trial_type == 'congruent_DDD' and key_press == correct_response and response_time >= 0.2"}
+  congruent_DDS:   {amplitude: 1, duration: 1, subset: "trial_type == 'congruent_DDS' and key_press == correct_response and response_time >= 0.2"}
+  incongruent_SSS: {amplitude: 1, duration: 1, subset: "trial_type == 'incongruent_SSS' and key_press == correct_response and response_time >= 0.2"}
+  incongruent_SDD: {amplitude: 1, duration: 1, subset: "trial_type == 'incongruent_SDD' and key_press == correct_response and response_time >= 0.2"}
+  incongruent_SNN: {amplitude: 1, duration: 1, subset: "trial_type == 'incongruent_SNN' and key_press == correct_response and response_time >= 0.2"}
+  incongruent_DSD: {amplitude: 1, duration: 1, subset: "trial_type == 'incongruent_DSD' and key_press == correct_response and response_time >= 0.2"}
+  incongruent_DNN: {amplitude: 1, duration: 1, subset: "trial_type == 'incongruent_DNN' and key_press == correct_response and response_time >= 0.2"}
+  incongruent_DDD: {amplitude: 1, duration: 1, subset: "trial_type == 'incongruent_DDD' and key_press == correct_response and response_time >= 0.2"}
+  incongruent_DDS: {amplitude: 1, duration: 1, subset: "trial_type == 'incongruent_DDS' and key_press == correct_response and response_time >= 0.2"}
+  response_time:   {amplitude: 1, duration: response_time, subset: "key_press == correct_response and response_time >= 0.2 and trial_id == 'test_trial'"}
+  omission:        {amplitude: omission,    duration: duration, subset: null}
+  commission:      {amplitude: commission,  duration: duration, subset: null}
+  rt_fast:         {amplitude: rt_too_fast, duration: duration, subset: null}
+  break_with_performance_feedback:
+    amplitude: 1
+    duration: duration
+    subset: "trial_id == 'break_with_performance_feedback'"
+    events_query_min_coverage: 0.0
+
+contrasts:
+  congruent_SSS: "congruent_SSS"
+  congruent_SDD: "congruent_SDD"
+  congruent_SNN: "congruent_SNN"
+  congruent_DSD: "congruent_DSD"
+  congruent_DNN: "congruent_DNN"
+  congruent_DDD: "congruent_DDD"
+  congruent_DDS: "congruent_DDS"
+  incongruent_SSS: "incongruent_SSS"
+  incongruent_SDD: "incongruent_SDD"
+  incongruent_SNN: "incongruent_SNN"
+  incongruent_DSD: "incongruent_DSD"
+  incongruent_DNN: "incongruent_DNN"
+  incongruent_DDD: "incongruent_DDD"
+  incongruent_DDS: "incongruent_DDS"
+  incongruent_congruent_SM_off: "1/2*(incongruent_SNN + incongruent_DNN) - 1/2*(congruent_SNN + congruent_DNN)"
+  main_vars_flanker_off:        "1/3*(congruent_SDD + congruent_DDD + congruent_DDS) - 1/2*(congruent_SNN + congruent_DNN)"
+  incongruent_congruent_pooled: "1/7*(incongruent_SSS + incongruent_SDD + incongruent_SNN + incongruent_DSD + incongruent_DNN + incongruent_DDD + incongruent_DDS) - 1/7*(congruent_SSS + congruent_SDD + congruent_SNN + congruent_DSD + congruent_DNN + congruent_DDD + congruent_DDS)"
+  main_vars_pooled:             "1/6*(congruent_SDD + congruent_DDD + congruent_DDS + incongruent_SDD + incongruent_DDD + incongruent_DDS) - 1/4*(congruent_SNN + congruent_DNN + incongruent_SNN + incongruent_DNN)"
+  interaction_flanker_shape:    "(1/3*(incongruent_SDD + incongruent_DDD + incongruent_DDS) - 1/3*(congruent_SDD + congruent_DDD + congruent_DDS)) - (1/2*(incongruent_SNN + incongruent_DNN) - 1/2*(congruent_SNN + congruent_DNN))"
+  task-baseline: "1/14*(congruent_SSS + congruent_SDD + congruent_SNN + congruent_DSD + congruent_DNN + congruent_DDD + congruent_DDS + incongruent_SSS + incongruent_SDD + incongruent_SNN + incongruent_DSD + incongruent_DNN + incongruent_DDD + incongruent_DDS)"

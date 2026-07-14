@@ -1,0 +1,99 @@
+tr: 1.49
+dummy_scans: 7
+min_rt: 0.2
+expected_sessions: 5
+
+# Shape matching task
+# Trial types: SSS, SDD, SNN, DSD, DDD, DDS, DNN
+# (S=same, D=different, N=neutral for shape/color/size dimensions)
+# The response_time regressor uses RT as duration (RTDur model).
+
+regressors:
+  SSS:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'SSS'
+
+  SDD:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'SDD'
+
+  SNN:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'SNN'
+
+  DSD:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'DSD'
+
+  DDD:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'DDD'
+
+  DDS:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'DDS'
+
+  DNN:
+    amplitude: 1
+    duration: 1
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_type == 'DNN'
+
+  response_time:
+    amplitude: 1
+    duration: response_time
+    subset: >-
+      key_press == correct_response and response_time >= 0.2
+      and trial_id == 'test_trial'
+
+  omission:
+    amplitude: omission
+    duration: duration
+    subset: null
+
+  commission:
+    amplitude: commission
+    duration: duration
+    subset: null
+
+  rt_fast:
+    amplitude: rt_too_fast
+    duration: duration
+    subset: null
+
+  break_with_performance_feedback:
+    amplitude: 1
+    duration: 10
+    subset: "trial_id == 'break_with_performance_feedback'"
+    events_query_min_coverage: 0.0
+
+contrasts:
+  task-baseline: "1/7 * (SSS + SDD + SNN + DSD + DDD + DDS + DNN)"
+  main_vars: "1/3 * (SDD + DDD + DDS) - 0.5 * (SNN + DNN)"
+  SSS: "SSS"
+  SDD: "SDD"
+  SNN: "SNN"
+  DSD: "DSD"
+  DDD: "DDD"
+  DDS: "DDS"
+  DNN: "DNN"
+  response_time: "response_time"

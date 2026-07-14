@@ -1,0 +1,44 @@
+tr: 1.49
+dummy_scans: 7
+min_rt: 0.2
+expected_sessions: null
+
+# Cued task-switching × Flanker dual task.
+# Factors on test_trial (after events/create.py switch-factor propagation):
+#   cued-task-switch = trial_type in {stay_stay, switch_stay, switch_switch, n/a_n/a}
+#   flanker congruency = flanker_condition in {congruent, incongruent}
+# Cell names keep the reference crossed-factor convention (c<cue>_t<task>_<flanker>).
+
+regressors:
+  cstay_tstay_congruent:      {amplitude: 1, duration: 1, subset: "trial_type == 'stay_stay' and flanker_condition == 'congruent' and key_press == correct_response and response_time >= 0.2"}
+  cstay_tstay_incongruent:    {amplitude: 1, duration: 1, subset: "trial_type == 'stay_stay' and flanker_condition == 'incongruent' and key_press == correct_response and response_time >= 0.2"}
+  cswitch_tstay_congruent:    {amplitude: 1, duration: 1, subset: "trial_type == 'switch_stay' and flanker_condition == 'congruent' and key_press == correct_response and response_time >= 0.2"}
+  cswitch_tstay_incongruent:  {amplitude: 1, duration: 1, subset: "trial_type == 'switch_stay' and flanker_condition == 'incongruent' and key_press == correct_response and response_time >= 0.2"}
+  cswitch_tswitch_congruent:  {amplitude: 1, duration: 1, subset: "trial_type == 'switch_switch' and flanker_condition == 'congruent' and key_press == correct_response and response_time >= 0.2"}
+  cswitch_tswitch_incongruent: {amplitude: 1, duration: 1, subset: "trial_type == 'switch_switch' and flanker_condition == 'incongruent' and key_press == correct_response and response_time >= 0.2"}
+  response_time:  {amplitude: 1, duration: response_time, subset: "key_press == correct_response and response_time >= 0.2 and trial_id == 'test_trial' and trial_type != 'n/a_n/a'"}
+  omission:       {amplitude: omission,    duration: duration, subset: null}
+  commission:     {amplitude: commission,  duration: duration, subset: null}
+  rt_fast:        {amplitude: rt_too_fast, duration: duration, subset: null}
+  break_with_performance_feedback:
+    amplitude: 1
+    duration: duration
+    subset: "trial_id == 'break_with_performance_feedback'"
+    events_query_min_coverage: 0.0
+
+contrasts:
+  cstay_tstay_congruent:       "cstay_tstay_congruent"
+  cstay_tstay_incongruent:     "cstay_tstay_incongruent"
+  cswitch_tstay_congruent:     "cswitch_tstay_congruent"
+  cswitch_tstay_incongruent:   "cswitch_tstay_incongruent"
+  cswitch_tswitch_congruent:   "cswitch_tswitch_congruent"
+  cswitch_tswitch_incongruent: "cswitch_tswitch_incongruent"
+  incongruent_congruent_cuedTS_off: "cstay_tstay_incongruent - cstay_tstay_congruent"
+  cue_switch_cost_flanker_off:      "cswitch_tstay_congruent - cstay_tstay_congruent"
+  task_switch_cost_flanker_off:     "cswitch_tswitch_congruent - cswitch_tstay_congruent"
+  incongruent_congruent_pooled: "1/3*(cstay_tstay_incongruent + cswitch_tswitch_incongruent + cswitch_tstay_incongruent) - 1/3*(cstay_tstay_congruent + cswitch_tswitch_congruent + cswitch_tstay_congruent)"
+  cue_switch_cost_pooled:  "1/2*(cswitch_tstay_congruent + cswitch_tstay_incongruent) - 1/2*(cstay_tstay_congruent + cstay_tstay_incongruent)"
+  task_switch_cost_pooled: "1/2*(cswitch_tswitch_congruent + cswitch_tswitch_incongruent) - 1/2*(cswitch_tstay_congruent + cswitch_tstay_incongruent)"
+  interaction_cue_switch_cost:  "1/2*(cswitch_tstay_incongruent - cstay_tstay_incongruent) - 1/2*(cswitch_tstay_congruent - cstay_tstay_congruent)"
+  interaction_task_switch_cost: "1/2*(cswitch_tswitch_incongruent - cswitch_tstay_incongruent) - 1/2*(cswitch_tswitch_congruent - cswitch_tstay_congruent)"
+  task-baseline: "1/6*(cstay_tstay_congruent + cstay_tstay_incongruent + cswitch_tswitch_congruent + cswitch_tswitch_incongruent + cswitch_tstay_congruent + cswitch_tstay_incongruent)"

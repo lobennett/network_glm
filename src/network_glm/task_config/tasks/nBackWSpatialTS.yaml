@@ -1,0 +1,56 @@
+tr: 1.49
+dummy_scans: 7
+min_rt: 0.2
+expected_sessions: null
+
+# N-back × spatial task-switching dual task.
+# Factors on test_trial (after events/create.py trial_type lowercasing):
+#   spatialTS switch = trial_type in {match,mismatch}_{tstay_cstay,tstay_cswitch,tswitch_cswitch}
+#   n-back level     = task column in {1-back, 2-back}
+# Cell name = <match/mismatch>_<switch>_<n>back.
+
+regressors:
+  match_tstay_cstay_1back:      {amplitude: 1, duration: 1, subset: "trial_type == 'match_tstay_cstay' and task == '1-back' and key_press == correct_response and response_time >= 0.2"}
+  match_tstay_cswitch_1back:    {amplitude: 1, duration: 1, subset: "trial_type == 'match_tstay_cswitch' and task == '1-back' and key_press == correct_response and response_time >= 0.2"}
+  match_tswitch_cswitch_1back:  {amplitude: 1, duration: 1, subset: "trial_type == 'match_tswitch_cswitch' and task == '1-back' and key_press == correct_response and response_time >= 0.2"}
+  mismatch_tstay_cstay_1back:   {amplitude: 1, duration: 1, subset: "trial_type == 'mismatch_tstay_cstay' and task == '1-back' and key_press == correct_response and response_time >= 0.2"}
+  mismatch_tstay_cswitch_1back: {amplitude: 1, duration: 1, subset: "trial_type == 'mismatch_tstay_cswitch' and task == '1-back' and key_press == correct_response and response_time >= 0.2"}
+  mismatch_tswitch_cswitch_1back: {amplitude: 1, duration: 1, subset: "trial_type == 'mismatch_tswitch_cswitch' and task == '1-back' and key_press == correct_response and response_time >= 0.2"}
+  match_tstay_cstay_2back:      {amplitude: 1, duration: 1, subset: "trial_type == 'match_tstay_cstay' and task == '2-back' and key_press == correct_response and response_time >= 0.2"}
+  match_tstay_cswitch_2back:    {amplitude: 1, duration: 1, subset: "trial_type == 'match_tstay_cswitch' and task == '2-back' and key_press == correct_response and response_time >= 0.2"}
+  match_tswitch_cswitch_2back:  {amplitude: 1, duration: 1, subset: "trial_type == 'match_tswitch_cswitch' and task == '2-back' and key_press == correct_response and response_time >= 0.2"}
+  mismatch_tstay_cstay_2back:   {amplitude: 1, duration: 1, subset: "trial_type == 'mismatch_tstay_cstay' and task == '2-back' and key_press == correct_response and response_time >= 0.2"}
+  mismatch_tstay_cswitch_2back: {amplitude: 1, duration: 1, subset: "trial_type == 'mismatch_tstay_cswitch' and task == '2-back' and key_press == correct_response and response_time >= 0.2"}
+  mismatch_tswitch_cswitch_2back: {amplitude: 1, duration: 1, subset: "trial_type == 'mismatch_tswitch_cswitch' and task == '2-back' and key_press == correct_response and response_time >= 0.2"}
+  response_time:  {amplitude: 1, duration: response_time, subset: "key_press == correct_response and response_time >= 0.2 and trial_id == 'test_trial' and trial_type != 'n/a'"}
+  omission:       {amplitude: omission,    duration: duration, subset: null}
+  commission:     {amplitude: commission,  duration: duration, subset: null}
+  rt_fast:        {amplitude: rt_too_fast, duration: duration, subset: null}
+  break_with_performance_feedback:
+    amplitude: 1
+    duration: duration
+    subset: "trial_id == 'break_with_performance_feedback'"
+    events_query_min_coverage: 0.0
+
+contrasts:
+  match_tstay_cstay_1back:       "match_tstay_cstay_1back"
+  match_tstay_cswitch_1back:     "match_tstay_cswitch_1back"
+  match_tswitch_cswitch_1back:   "match_tswitch_cswitch_1back"
+  mismatch_tstay_cstay_1back:    "mismatch_tstay_cstay_1back"
+  mismatch_tstay_cswitch_1back:  "mismatch_tstay_cswitch_1back"
+  mismatch_tswitch_cswitch_1back: "mismatch_tswitch_cswitch_1back"
+  match_tstay_cstay_2back:       "match_tstay_cstay_2back"
+  match_tstay_cswitch_2back:     "match_tstay_cswitch_2back"
+  match_tswitch_cswitch_2back:   "match_tswitch_cswitch_2back"
+  mismatch_tstay_cstay_2back:    "mismatch_tstay_cstay_2back"
+  mismatch_tstay_cswitch_2back:  "mismatch_tstay_cswitch_2back"
+  mismatch_tswitch_cswitch_2back: "mismatch_tswitch_cswitch_2back"
+  twoBack_oneBack_spatialTS_off: "1/2*(match_tstay_cstay_2back + mismatch_tstay_cstay_2back) - 1/2*(match_tstay_cstay_1back + mismatch_tstay_cstay_1back)"
+  cue_switch_cost_nBack_off:     "1/2*(match_tstay_cswitch_1back + mismatch_tstay_cswitch_1back) - 1/2*(match_tstay_cstay_1back + mismatch_tstay_cstay_1back)"
+  task_switch_cost_nBack_off:    "1/2*(match_tswitch_cswitch_1back + mismatch_tswitch_cswitch_1back) - 1/2*(match_tstay_cswitch_1back + mismatch_tstay_cswitch_1back)"
+  twoBack_oneBack_pooled:  "1/6*(match_tstay_cstay_2back + match_tstay_cswitch_2back + match_tswitch_cswitch_2back + mismatch_tstay_cstay_2back + mismatch_tstay_cswitch_2back + mismatch_tswitch_cswitch_2back) - 1/6*(match_tstay_cstay_1back + match_tstay_cswitch_1back + match_tswitch_cswitch_1back + mismatch_tstay_cstay_1back + mismatch_tstay_cswitch_1back + mismatch_tswitch_cswitch_1back)"
+  cue_switch_cost_pooled:  "1/4*(match_tstay_cswitch_1back + match_tstay_cswitch_2back + mismatch_tstay_cswitch_1back + mismatch_tstay_cswitch_2back) - 1/4*(match_tstay_cstay_1back + match_tstay_cstay_2back + mismatch_tstay_cstay_1back + mismatch_tstay_cstay_2back)"
+  task_switch_cost_pooled: "1/4*(match_tswitch_cswitch_1back + match_tswitch_cswitch_2back + mismatch_tswitch_cswitch_1back + mismatch_tswitch_cswitch_2back) - 1/4*(match_tstay_cswitch_1back + match_tstay_cswitch_2back + mismatch_tstay_cswitch_1back + mismatch_tstay_cswitch_2back)"
+  interaction_cue_switch_cost:  "(1/2*(match_tstay_cswitch_2back + mismatch_tstay_cswitch_2back) - 1/2*(match_tstay_cstay_2back + mismatch_tstay_cstay_2back)) - (1/2*(match_tstay_cswitch_1back + mismatch_tstay_cswitch_1back) - 1/2*(match_tstay_cstay_1back + mismatch_tstay_cstay_1back))"
+  interaction_task_switch_cost: "(1/2*(match_tswitch_cswitch_2back + mismatch_tswitch_cswitch_2back) - 1/2*(match_tstay_cswitch_2back + mismatch_tstay_cswitch_2back)) - (1/2*(match_tswitch_cswitch_1back + mismatch_tswitch_cswitch_1back) - 1/2*(match_tstay_cswitch_1back + mismatch_tstay_cswitch_1back))"
+  task-baseline: "1/12*(match_tstay_cstay_1back + match_tstay_cswitch_1back + match_tswitch_cswitch_1back + mismatch_tstay_cstay_1back + mismatch_tstay_cswitch_1back + mismatch_tswitch_cswitch_1back + match_tstay_cstay_2back + match_tstay_cswitch_2back + match_tswitch_cswitch_2back + mismatch_tstay_cstay_2back + mismatch_tstay_cswitch_2back + mismatch_tswitch_cswitch_2back)"
