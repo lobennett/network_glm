@@ -9,15 +9,18 @@ description = "r01network first- and second-level task-fMRI GLMs (lev1/lev2) + c
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0.3",
-    "nilearn>=0.12",
-    "nibabel>=5.0",
-    "pandas>=2.0",
-    "numpy>=1.24",
+    # Scientific stack PINNED to the neuro_workflow@main lock versions. Two reasons:
+    # (1) fresh resolution grabs newest releases that lack cp313 manylinux2014
+    #     (glibc-2.17 / CentOS 7) wheels and fall back to source builds that fail
+    #     (pillow 12.3.0 no wheel; scipy 1.18.0 needs external OpenBLAS; etc.).
+    # (2) byte-identical verification vs the monolith needs the same numeric stack.
+    "numpy==2.4.2",
+    "scipy==1.17.1",
+    "pandas==3.0.1",
+    "nibabel==5.4.0",
+    "nilearn==0.13.1",
     "statsmodels>=0.14",
-    "matplotlib",
-    # pillow 12.3.0 has no cp313 manylinux2014 (glibc-2.17) wheel and fails to
-    # build from source on Sherlock's CentOS 7 hosts; 12.1.1 (the monolith's
-    # pinned version) has a working wheel.
+    "matplotlib==3.10.8",
     "pillow==12.1.1",
     "seaborn",
     "randomise-prep @ git+https://github.com/jmumford/randomise-prep.git",
