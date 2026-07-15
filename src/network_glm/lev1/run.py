@@ -227,10 +227,10 @@ def _write_lev1_provenance(results_dir, args, dirs, input_files):
     )
 
 
-def main():
+def main(argv=None):
     """Run level 1 analysis with command line arguments."""
     parser = get_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     setup_logging(verbose=args.verbose)
 

@@ -403,10 +403,10 @@ def _write_lev2_provenance(output_dir, args, level1_dirs, input_files):
     manifest_path.write_text(json.dumps(manifest, indent=2))
 
 
-def main() -> None:
+def main(argv=None) -> None:
     """Run level 2 analysis with command line arguments."""
     parser = get_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     print("=" * 60)
     print("Level 2 GLM Analysis")
