@@ -1,9 +1,9 @@
 Bootstrap: docker
-From: ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+From: astral/uv:0.10-python3.13-trixie-slim
 
 # network_glm container.
 #
-# Debian bookworm (glibc 2.36) so scipy/nilearn/numpy install from wheels — the
+# Debian trixie (glibc 2.41) so scipy/nilearn/numpy install from wheels — the
 # reason a bare `uv sync` on Sherlock's CentOS 7 (glibc 2.17) nodes cannot build
 # scipy (no manylinux2014 wheel; source build needs OpenBLAS/gfortran).
 #
@@ -27,18 +27,16 @@ From: ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 %post
     set -eux
     cd /opt/network_glm
-    export UV_PROJECT_ENVIRONMENT=/opt/venv
-    export UV_CACHE_DIR=/tmp/uvcache
-    # Resolve + install network_glm and all deps (scipy/nilearn/statsmodels +
-    # git companions network_qa / randomise-prep / bold-reliability-movies) into
-    # a baked-in venv.
-    uv sync
-    rm -rf /tmp/uvcache
-    # smoke: the console script + the scientific stack import
+    # Install network_glm + all deps (scipy/nilearn/statsmodels + git companions
+    # network_qa / randomise-prep / bold-reliability-movies) into a baked-in venv,
+    # mirroring the monolith def (venv at /opt/venv, uv pip install).
+    uv venv /opt/venv
+    UV_CACHE_DIR=/tmp/uv_cache uv pip install --python /opt/venv/bin/python .
+    rm -rf /tmp/uv_cache
+    # smoke: the scientific stack imports
     /opt/venv/bin/python -c "import scipy, nilearn, nibabel, pandas, numpy, statsmodels, network_qa; print('scientific stack OK')"
 
 %environment
-    export UV_PROJECT_ENVIRONMENT=/opt/venv
     export PATH=/opt/venv/bin:$PATH
     export PYTHONUNBUFFERED=1
 
