@@ -26,6 +26,9 @@ From: astral/uv:0.10-python3.13-trixie-slim
 
 %post
     set -eux
+    # git is needed for the git+ companion deps (network_qa / randomise-prep /
+    # bold-reliability-movies); the slim base image ships without it.
+    apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
     cd /opt/network_glm
     # Install network_glm + all deps (scipy/nilearn/statsmodels + git companions
     # network_qa / randomise-prep / bold-reliability-movies) into a baked-in venv,
