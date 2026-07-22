@@ -213,6 +213,48 @@ class ResidualsProcessor:
         return stats
 
 
+def cifti_residual_filename(base_filename: str) -> str:
+    """Canonical fsLR den-91k residual dtseries name (shared with --skip-existing)."""
+    return f"{base_filename}_space-fsLR_den-91k_task-regressed-residuals.dtseries.nii"
+
+
+def process_cifti_residuals(
+    surface_glm,
+    template,
+    output_dir: Path,
+    base_filename: str,
+    tr: float = 1.49,
+    low_pass: float | None = 0.1,
+    high_pass: float | None = 0.01,
+    fc_confounds: np.ndarray | None = None,
+) -> dict:
+    """Compute Y - X*beta from a fitted SurfaceGLM over CIFTI grayordinates,
+    optionally band-pass + FC-confound clean, and write an fsLR den-91k dtseries
+    reusing the input CIFTI header. Mirrors process_surface_residuals."""
+    from network_glm.lev1.processing.cifti_io import write_dtseries
+
+    output_dir = Path(output_dir)
+    result = {"success": True, "saved_path": None, "errors": []}
+    try:
+        residuals = surface_glm.get_residuals()  # (T, n_grayordinates)
+        if low_pass is not None or high_pass is not None or fc_confounds is not None:
+            residuals = clean_signal(
+                residuals, t_r=tr, low_pass=low_pass, high_pass=high_pass,
+                confounds=fc_confounds, standardize=False, detrend=False,
+            )
+        out_path = write_dtseries(
+            residuals.astype(np.float32), template,
+            output_dir / cifti_residual_filename(base_filename),
+        )
+        result["saved_path"] = out_path
+        logger.info("Saved CIFTI residuals: %s", out_path)
+    except Exception as e:
+        result["success"] = False
+        result["errors"].append(str(e))
+        logger.error("Failed to process CIFTI residuals: %s", e)
+    return result
+
+
 def process_run_residuals(
     fitted_glm: FirstLevelModel,
     output_dir: Path,
