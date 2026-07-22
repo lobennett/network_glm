@@ -30,3 +30,14 @@ def test_process_cifti_residuals_writes_dtseries(tmp_path):
     assert saved.name.endswith("_space-fsLR_den-91k_task-regressed-residuals.dtseries.nii")
     reloaded, _ = load_dtseries(saved)
     assert reloaded.shape == (40, 500)
+
+
+def test_process_cifti_run_requires_residuals(tmp_path):
+    import argparse
+    from network_glm.lev1.runner import process_cifti_run
+    args = argparse.Namespace(residuals=False, task_name="stopSignal", subj_id="sub-x")
+    try:
+        process_cifti_run({}, pd.DataFrame(), args, {}, "sub-x_ses-01_task-t_run-1", 1.49, None)
+        assert False, "expected ValueError when --residuals not set"
+    except ValueError as e:
+        assert "residuals" in str(e).lower()

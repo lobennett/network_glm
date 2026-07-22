@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from network_glm.exclusions import load_contrast_exclusions
+from network_glm.lev1.processing.cifti_io import load_dtseries
 from network_glm.lev1.processing.confounds import (
     get_fc_confounds,
     load_and_process_confounds,
@@ -38,6 +39,8 @@ from network_glm.lev1.processing.glm import (
 )
 from network_glm.lev1.processing.quality_control import run_quality_control
 from network_glm.lev1.processing.residuals import (
+    cifti_residual_filename,
+    process_cifti_residuals,
     process_run_residuals,
     process_surface_residuals,
     surface_residual_filename,
@@ -51,7 +54,7 @@ from network_glm.lev1.processing.surface_data import (
     resolve_freesurfer_subject,
     smooth_surface_gifti,
 )
-from network_glm.lev1.spaces import is_surface_space, resolve_surface_space
+from network_glm.lev1.spaces import is_cifti_space, is_surface_space, resolve_surface_space
 from network_glm.task_config.loader import get_task_contrasts
 
 logger = logging.getLogger(__name__)
@@ -263,6 +266,17 @@ def process_surface_run(
     return all_hemisphere_results
 
 
+def process_cifti_run(run_files, design_matrix, args, dirs, base_filename, tr, fc_confounds=None):
+    """Fit a GLM over fsLR den-91k grayordinates and write residuals as a dtseries."""
+    if not getattr(args, "residuals", False):
+        raise ValueError("--space fsLR is residuals-only; pass --residuals.")
+    data, template = load_dtseries(run_files["cifti_bold"])  # (T, 91282)
+    glm = SurfaceGLM(t_r=tr).fit(data, design_matrix)
+    return process_cifti_residuals(
+        glm, template, dirs["task_residuals"], base_filename, tr, fc_confounds=fc_confounds
+    )
+
+
 def _run_base_filename(subj_id, session, task_name, run):
     """BIDS-style per-run base filename shared by run keys + output filenames."""
     return f"{subj_id}_{session}_task-{task_name}_{run}"
@@ -295,6 +309,11 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
             if lh_res.exists() and rh_res.exists():
                 logger.info("Skipping %s (outputs already exist)", run_key)
                 return True
+        elif is_cifti_space(args.space) and args.residuals:
+            cifti_res = dirs["task_residuals"] / cifti_residual_filename(base_filename)
+            if cifti_res.exists():
+                logger.info("Skipping %s (outputs already exist)", run_key)
+                return True
         elif not is_surface_space(args.space) and args.residuals:
             vol_res = dirs["task_residuals"] / f"{base_filename}_task-regressed-residuals.nii.gz"
             if vol_res.exists():
@@ -304,7 +323,13 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     logger.info("Processing %s/%s...", session, run)
 
     # Load BOLD data or get scan count
-    if is_surface_space(args.space):
+    if is_cifti_space(args.space):
+        if "cifti_bold" not in run_files:
+            raise ValueError(f"Missing cifti_bold for {session}/{run}")
+        _cifti_data, _cifti_template = load_dtseries(run_files["cifti_bold"])
+        n_scans = _cifti_data.shape[0]
+        del _cifti_data  # reloaded inside process_cifti_run; keep peak memory low
+    elif is_surface_space(args.space):
         if "left_surface" not in run_files or "right_surface" not in run_files:
             raise ValueError(f"Missing surface files for {session}/{run}")
         n_scans_total, _ = get_surface_scan_info(run_files["left_surface"])
@@ -394,7 +419,17 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
             fc_confounds = fc_confounds_df.values
             logger.info("FC confounds: %d columns", fc_confounds.shape[1])
 
-    if is_surface_space(args.space):
+    if is_cifti_space(args.space):
+        process_cifti_run(
+            run_files,
+            design_matrix,
+            args,
+            dirs,
+            base_filename,
+            tr,
+            fc_confounds=fc_confounds,
+        )
+    elif is_surface_space(args.space):
         surface_space = resolve_surface_space(args.space)
 
         process_surface_run(
