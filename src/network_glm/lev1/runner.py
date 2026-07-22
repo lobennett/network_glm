@@ -275,8 +275,12 @@ def process_cifti_run(run_files, design_matrix, args, dirs, base_filename, tr, f
     if not validation["is_valid"]:
         raise ValueError(f"CIFTI GLM design validation failed: {validation['errors']}")
     glm = SurfaceGLM(t_r=tr).fit(data, design_matrix)
+    no_filter = getattr(args, "no_residual_filter", False)
+    lp = None if no_filter else 0.1
+    hp = None if no_filter else 0.01
     return process_cifti_residuals(
-        glm, template, dirs["task_residuals"], base_filename, tr, fc_confounds=fc_confounds
+        glm, template, dirs["task_residuals"], base_filename, tr,
+        low_pass=lp, high_pass=hp, fc_confounds=fc_confounds,
     )
 
 

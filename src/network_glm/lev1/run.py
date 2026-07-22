@@ -128,6 +128,12 @@ def get_parser() -> argparse.ArgumentParser:
         "for FC analysis. Requires --residuals. Follows Du et al. 2025.",
     )
     parser.add_argument(
+        "--no-residual-filter",
+        action="store_true",
+        help="Emit residuals WITHOUT the 0.01-0.1 Hz band-pass (fsLR/CIFTI path); "
+        "defer temporal filtering to downstream (e.g. XCP-D).",
+    )
+    parser.add_argument(
         "--confounds-mode",
         choices=["full", "no-motion", "task-only"],
         default="full",
