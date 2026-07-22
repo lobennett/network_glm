@@ -13,35 +13,35 @@
 
 ---
 
-## Environment (Task 0 — do first; blocks test execution)
+## Environment — run ALL code execution through the container (proven)
 
-network_glm's neuroimaging deps live in the `.[lev1]` optional extra; tests
-`pytest.skip` without them. On Sherlock compute nodes the env must be **Python
-3.11** (3.13 lacks wheels for the locked scientific stack) with deps installed
-**wheels-forced** (scipy/numpy/nibabel/nilearn source-build otherwise).
+network_glm code (incl. tests) runs **inside `network_glm.sif`** — the preferred
+approach for this repo. The container has the scientific stack (nibabel/nilearn/
+scipy/pandas, Python 3.13) baked, but **not pytest**, and its baked `network_glm`
+must be shadowed by the branch working tree. Both are handled by binding the repo
++ an injected pytest bundle on `PYTHONPATH`.
 
-- [ ] **Step 1: Build the test venv** (adjust if a blessed recipe exists / CI env differs)
-
+**One-time setup (already done for this session; re-run if the scratch bundle is purged):**
 ```bash
 module load uv/0.9.5
 export UV_CACHE_DIR=/scratch/users/logben/uv_cache
-uv python install 3.11
-ENV=/scratch/users/logben/network_glm_test_venv
-uv venv --python 3.11 "$ENV"
-uv pip install --python "$ENV/bin/python" --only-binary=:all: -e '.[lev1]' pytest
-"$ENV/bin/python" -c "import pytest,nibabel,nilearn,scipy,pandas; print('env ok')"
+uv python install 3.13
+mkdir -p /scratch/users/logben/nglm_pytest_libs
+uv pip install --python 3.13 --target /scratch/users/logben/nglm_pytest_libs pytest
 ```
 
-- [ ] **Step 2: Confirm the suite runs (baseline green)**
-
-Run: `UV_PROJECT_ENVIRONMENT=$ENV uv run --no-sync pytest tests/lev1 -q -p no:cacheprovider`
-Expected: existing tests pass (no `Skipped: neuroimaging dependencies not installed`).
-
-> All later task test commands assume `module load uv/0.9.5`,
-> `export UV_PROJECT_ENVIRONMENT=/scratch/users/logben/network_glm_test_venv`,
-> and run with `uv run --no-sync pytest … -p no:cacheprovider`.
-> Note: tasks 1–2 (confounds regex, spaces) only need pandas+pytest; tasks 3–5
-> need nibabel/nilearn/scipy from the `.[lev1]` extra.
+**THE TEST COMMAND (use for every task's test steps):**
+```bash
+SIF=/home/groups/russpold/singularity_images/network_glm.sif
+apptainer exec --bind /home/users/logben/network_glm --bind /scratch/users/logben "$SIF" bash -c '
+  cd /home/users/logben/network_glm
+  export PYTHONPATH=/home/users/logben/network_glm/src:/scratch/users/logben/nglm_pytest_libs
+  python -m pytest <TEST_PATHS> -q -p no:cacheprovider
+'
+```
+Verified: `tests/lev1/test_confounds.py tests/lev1/test_surface_glm_spaces.py` → **13 passed**.
+Do NOT use a host `uv run` venv for network_glm (its locked scientific deps
+source-build and fail on the compute node — that's why the container is used).
 
 ---
 
