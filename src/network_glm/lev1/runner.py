@@ -271,6 +271,9 @@ def process_cifti_run(run_files, design_matrix, args, dirs, base_filename, tr, f
     if not getattr(args, "residuals", False):
         raise ValueError("--space fsLR is residuals-only; pass --residuals.")
     data, template = load_dtseries(run_files["cifti_bold"])  # (T, 91282)
+    validation = validate_design_matrix(design_matrix, n_scans=data.shape[0])
+    if not validation["is_valid"]:
+        raise ValueError(f"CIFTI GLM design validation failed: {validation['errors']}")
     glm = SurfaceGLM(t_r=tr).fit(data, design_matrix)
     return process_cifti_residuals(
         glm, template, dirs["task_residuals"], base_filename, tr, fc_confounds=fc_confounds
@@ -326,9 +329,9 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     if is_cifti_space(args.space):
         if "cifti_bold" not in run_files:
             raise ValueError(f"Missing cifti_bold for {session}/{run}")
-        _cifti_data, _cifti_template = load_dtseries(run_files["cifti_bold"])
-        n_scans = _cifti_data.shape[0]
-        del _cifti_data  # reloaded inside process_cifti_run; keep peak memory low
+        import nibabel as nib
+
+        n_scans = nib.load(str(run_files["cifti_bold"])).shape[0]
     elif is_surface_space(args.space):
         if "left_surface" not in run_files or "right_surface" not in run_files:
             raise ValueError(f"Missing surface files for {session}/{run}")
@@ -476,6 +479,10 @@ def compute_fixed_effects_all(
 
     Tags output with desc-partialRuns if any runs failed.
     """
+    if is_cifti_space(args.space):
+        logger.info("Skipping fixed-effects for CIFTI/fsLR (residuals-only path)")
+        return
+
     # Compute fixed effects on available successful runs (partial run support)
     successful_runs = run_count - len(failed_runs)
     if successful_runs == 0:

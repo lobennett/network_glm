@@ -18,7 +18,7 @@ from network_glm.exclusions import (
 )
 from network_glm.io.file_discovery import FileFinder
 from network_glm.lev1.processing.masks import MaskProcessor
-from network_glm.lev1.spaces import is_surface_space, resolve_surface_space
+from network_glm.lev1.spaces import is_cifti_space, is_surface_space, resolve_surface_space
 from network_glm.lev1.subject_config import Config
 
 logger = logging.getLogger(__name__)
@@ -98,10 +98,10 @@ def setup_masks(files, args, dirs):
     """Process brain masks for volumetric analysis.
 
     Returns:
-        Path to combined mask or None for surface space.
+        Path to combined mask or None for surface/CIFTI space.
     """
-    if is_surface_space(args.space):
-        logger.info("Skipping mask processing for surface space")
+    if is_surface_space(args.space) or is_cifti_space(args.space):
+        logger.info("Skipping mask processing for surface/CIFTI space")
         return None
 
     mask_info = MaskProcessor.get_mask_info(files, args.space)

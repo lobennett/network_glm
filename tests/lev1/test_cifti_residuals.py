@@ -27,9 +27,18 @@ def test_process_cifti_residuals_writes_dtseries(tmp_path):
                                   tr=1.49, fc_confounds=None, low_pass=None, high_pass=None)
     assert out["success"] is True
     saved = out["saved_path"]
-    assert saved.name.endswith("_space-fsLR_den-91k_task-regressed-residuals.dtseries.nii")
+    assert saved.name.endswith("_space-fsLR_den-91k_desc-taskRegressedResiduals_bold.dtseries.nii")
     reloaded, _ = load_dtseries(saved)
     assert reloaded.shape == (40, 500)
+
+
+def test_cifti_residual_name_matches_postproc_glob():
+    import fnmatch
+
+    from network_glm.lev1.processing.residuals import cifti_residual_filename
+
+    name = cifti_residual_filename("sub-x_ses-01_task-rest_run-1")
+    assert fnmatch.fnmatch(name, "*_space-fsLR_den-91k_*bold.dtseries.nii")
 
 
 def test_process_cifti_run_requires_residuals(tmp_path):

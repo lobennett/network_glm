@@ -214,8 +214,14 @@ class ResidualsProcessor:
 
 
 def cifti_residual_filename(base_filename: str) -> str:
-    """Canonical fsLR den-91k residual dtseries name (shared with --skip-existing)."""
-    return f"{base_filename}_space-fsLR_den-91k_task-regressed-residuals.dtseries.nii"
+    """Canonical fsLR den-91k residual dtseries name.
+
+    Ends in `_bold.dtseries.nii` (carrying `space-fsLR_den-91k`) so it matches the
+    XCP-D / postproc glob `*_space-fsLR_den-91k_*bold.dtseries.nii` and is ingested
+    as a functional run; `desc-taskRegressedResiduals` marks it as the residual.
+    Shared with the writer and --skip-existing so they cannot drift.
+    """
+    return f"{base_filename}_space-fsLR_den-91k_desc-taskRegressedResiduals_bold.dtseries.nii"
 
 
 def process_cifti_residuals(
