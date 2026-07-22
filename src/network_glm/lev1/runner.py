@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from network_glm.exclusions import load_contrast_exclusions
+from network_glm.lev1.processing.cifti_io import load_dtseries
 from network_glm.lev1.processing.confounds import (
     get_fc_confounds,
     load_and_process_confounds,
@@ -38,6 +39,8 @@ from network_glm.lev1.processing.glm import (
 )
 from network_glm.lev1.processing.quality_control import run_quality_control
 from network_glm.lev1.processing.residuals import (
+    cifti_residual_filename,
+    process_cifti_residuals,
     process_run_residuals,
     process_surface_residuals,
     surface_residual_filename,
@@ -51,7 +54,7 @@ from network_glm.lev1.processing.surface_data import (
     resolve_freesurfer_subject,
     smooth_surface_gifti,
 )
-from network_glm.lev1.spaces import is_surface_space, resolve_surface_space
+from network_glm.lev1.spaces import is_cifti_space, is_surface_space, resolve_surface_space
 from network_glm.task_config.loader import get_task_contrasts
 
 logger = logging.getLogger(__name__)
@@ -263,6 +266,20 @@ def process_surface_run(
     return all_hemisphere_results
 
 
+def process_cifti_run(run_files, design_matrix, args, dirs, base_filename, tr, fc_confounds=None):
+    """Fit a GLM over fsLR den-91k grayordinates and write residuals as a dtseries."""
+    if not getattr(args, "residuals", False):
+        raise ValueError("--space fsLR is residuals-only; pass --residuals.")
+    data, template = load_dtseries(run_files["cifti_bold"])  # (T, 91282)
+    validation = validate_design_matrix(design_matrix, n_scans=data.shape[0])
+    if not validation["is_valid"]:
+        raise ValueError(f"CIFTI GLM design validation failed: {validation['errors']}")
+    glm = SurfaceGLM(t_r=tr).fit(data, design_matrix)
+    return process_cifti_residuals(
+        glm, template, dirs["task_residuals"], base_filename, tr, fc_confounds=fc_confounds
+    )
+
+
 def _run_base_filename(subj_id, session, task_name, run):
     """BIDS-style per-run base filename shared by run keys + output filenames."""
     return f"{subj_id}_{session}_task-{task_name}_{run}"
@@ -295,6 +312,11 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
             if lh_res.exists() and rh_res.exists():
                 logger.info("Skipping %s (outputs already exist)", run_key)
                 return True
+        elif is_cifti_space(args.space) and args.residuals:
+            cifti_res = dirs["task_residuals"] / cifti_residual_filename(base_filename)
+            if cifti_res.exists():
+                logger.info("Skipping %s (outputs already exist)", run_key)
+                return True
         elif not is_surface_space(args.space) and args.residuals:
             vol_res = dirs["task_residuals"] / f"{base_filename}_task-regressed-residuals.nii.gz"
             if vol_res.exists():
@@ -304,7 +326,13 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     logger.info("Processing %s/%s...", session, run)
 
     # Load BOLD data or get scan count
-    if is_surface_space(args.space):
+    if is_cifti_space(args.space):
+        if "cifti_bold" not in run_files:
+            raise ValueError(f"Missing cifti_bold for {session}/{run}")
+        import nibabel as nib
+
+        n_scans = nib.load(str(run_files["cifti_bold"])).shape[0]
+    elif is_surface_space(args.space):
         if "left_surface" not in run_files or "right_surface" not in run_files:
             raise ValueError(f"Missing surface files for {session}/{run}")
         n_scans_total, _ = get_surface_scan_info(run_files["left_surface"])
@@ -330,7 +358,8 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     # is run with --dummy-scans 0, so the confounds TSV already matches the
     # trimmed BOLD length. Do not trim confounds further.
     selected_confounds = load_and_process_confounds(
-        run_files["confounds"], args.task_name, sample_type, dummy_scans=0
+        run_files["confounds"], args.task_name, sample_type, dummy_scans=0,
+        confounds_mode=getattr(args, "confounds_mode", "full"),
     )
     if len(selected_confounds) != n_scans:
         raise ValueError(f"Confounds length mismatch: {len(selected_confounds)} != {n_scans}")
@@ -393,7 +422,17 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
             fc_confounds = fc_confounds_df.values
             logger.info("FC confounds: %d columns", fc_confounds.shape[1])
 
-    if is_surface_space(args.space):
+    if is_cifti_space(args.space):
+        process_cifti_run(
+            run_files,
+            design_matrix,
+            args,
+            dirs,
+            base_filename,
+            tr,
+            fc_confounds=fc_confounds,
+        )
+    elif is_surface_space(args.space):
         surface_space = resolve_surface_space(args.space)
 
         process_surface_run(
@@ -440,6 +479,10 @@ def compute_fixed_effects_all(
 
     Tags output with desc-partialRuns if any runs failed.
     """
+    if is_cifti_space(args.space):
+        logger.info("Skipping fixed-effects for CIFTI/fsLR (residuals-only path)")
+        return
+
     # Compute fixed effects on available successful runs (partial run support)
     successful_runs = run_count - len(failed_runs)
     if successful_runs == 0:
