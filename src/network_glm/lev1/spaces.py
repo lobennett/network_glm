@@ -8,8 +8,13 @@ other.
 
 
 def is_surface_space(space: str) -> bool:
-    """Check if the analysis space is a surface space."""
-    return space in ("surface", "fsaverage6", "fsLR")
+    """True for per-hemi GIFTI surface spaces (fsLR is CIFTI, handled separately)."""
+    return space in ("surface", "fsaverage6")
+
+
+def is_cifti_space(space: str) -> bool:
+    """True for CIFTI dense-timeseries spaces (fsLR den-91k)."""
+    return space == "fsLR"
 
 
 def resolve_surface_space(space: str) -> str | None:
