@@ -128,6 +128,13 @@ def get_parser() -> argparse.ArgumentParser:
         "for FC analysis. Requires --residuals. Follows Du et al. 2025.",
     )
     parser.add_argument(
+        "--confounds-mode",
+        choices=["full", "no-motion", "task-only"],
+        default="full",
+        help="Nuisance regressors in the lev1 design: full (cosine+24p motion+spikes), "
+        "no-motion (cosine only), task-only (none). NSI-experiment arms.",
+    )
+    parser.add_argument(
         "--mni-template",
         default="MNI152NLin6Asym",
         help="fMRIPrep MNI template name for --space MNI " "(default: MNI152NLin6Asym)",

@@ -330,7 +330,8 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     # is run with --dummy-scans 0, so the confounds TSV already matches the
     # trimmed BOLD length. Do not trim confounds further.
     selected_confounds = load_and_process_confounds(
-        run_files["confounds"], args.task_name, sample_type, dummy_scans=0
+        run_files["confounds"], args.task_name, sample_type, dummy_scans=0,
+        confounds_mode=getattr(args, "confounds_mode", "full"),
     )
     if len(selected_confounds) != n_scans:
         raise ValueError(f"Confounds length mismatch: {len(selected_confounds)} != {n_scans}")

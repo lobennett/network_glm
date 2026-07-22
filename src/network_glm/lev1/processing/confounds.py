@@ -8,18 +8,26 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def _get_base_confound_pattern(task_name: str, sample_type: str) -> str:
+def _get_base_confound_pattern(
+    task_name: str, sample_type: str, confounds_mode: str = "full"
+) -> str:
     """Get base confound selection pattern.
 
     Args:
         task_name: Name of the task
         sample_type: Sample type ('discovery' or 'validation')
+        confounds_mode: Which nuisance regressors to include. ``"full"``
+            includes drift cosines + the 24-parameter motion model +
+            motion-outlier spikes (previous, unchanged behavior).
+            ``"no-motion"`` includes only the drift cosines. ``"task-only"``
+            is handled upstream in ``load_and_process_confounds`` (no
+            pattern is built at all).
 
     Returns:
         Regex pattern for confound selection
     """
-    # Base pattern for motion (24 parameter Friston model), drift (DCT
-    # cosines), and per-frame motion-outlier spike regressors.
+    # Drift (DCT cosines), and (for "full") motion (24 parameter Friston
+    # model) plus per-frame motion-outlier spike regressors.
     #
     # ``motion_outlier_NN`` are one-hot indicator columns fMRIPrep emits for
     # every TR with FD > 0.5 mm. The 24-parameter model absorbs *continuous*
@@ -32,8 +40,9 @@ def _get_base_confound_pattern(task_name: str, sample_type: str) -> str:
     # Run-level FD exclusion (.bidsignore: drop scans where >20% of TRs
     # exceed FD>0.5 mm) handles whole-scan motion; the spike regressors
     # catch the residual within-scan high-motion frames.
-    base_pattern = (
-        "cosine|trans_[xyz]$|trans_[xyz]_derivative1$|trans_[xyz]_power2$|"
+    cosine = "cosine"
+    motion = (
+        "trans_[xyz]$|trans_[xyz]_derivative1$|trans_[xyz]_power2$|"
         "trans_[xyz]_derivative1_power2$|rot_[xyz]$|rot_[xyz]_derivative1$|"
         "rot_[xyz]_power2$|rot_[xyz]_derivative1_power2$|motion_outlier\\d+"
     )
@@ -48,8 +57,11 @@ def _get_base_confound_pattern(task_name: str, sample_type: str) -> str:
 
     max_idx = confounds_cosine_caps().get(sample_type, {}).get(task_name)
     if max_idx is not None:
-        return base_pattern.replace("cosine", f"cosine0[0-{int(max_idx)}]")
-    return base_pattern
+        cosine = f"cosine0[0-{int(max_idx)}]"
+
+    if confounds_mode == "no-motion":
+        return cosine
+    return f"{cosine}|{motion}"
 
 
 def load_and_process_confounds(
@@ -58,6 +70,7 @@ def load_and_process_confounds(
     sample_type: str = "validation",
     dummy_scans: int = 0,
     additional_patterns: list[str] | None = None,
+    confounds_mode: str = "full",
 ) -> pd.DataFrame:
     """Load and process confounds with task-specific selection.
 
@@ -67,6 +80,12 @@ def load_and_process_confounds(
         sample_type: Sample type
         dummy_scans: Number of dummy scans to remove
         additional_patterns: Additional regex patterns
+        confounds_mode: Which nuisance regressors to include in the lev1
+            design: ``"full"`` (cosine drift + 24-parameter motion + spike
+            regressors, the previous default behavior), ``"no-motion"``
+            (cosine drift only), or ``"task-only"`` (no nuisance
+            regressors at all; rows are still preserved for design-matrix
+            concatenation). NSI-experiment arms.
 
     Returns:
         Processed confounds dataframe
@@ -83,8 +102,13 @@ def load_and_process_confounds(
     if dummy_scans > 0:
         confounds_df = confounds_df.iloc[dummy_scans:].reset_index(drop=True)
 
+    # task-only: no nuisance regressors; design.create_design_matrix adds an
+    # intercept when no cosine00 is present.
+    if confounds_mode == "task-only":
+        return confounds_df.iloc[:, :0].reset_index(drop=True)
+
     # Get base pattern for confound selection
-    pattern = _get_base_confound_pattern(task_name, sample_type)
+    pattern = _get_base_confound_pattern(task_name, sample_type, confounds_mode)
 
     # Add additional patterns if provided
     if additional_patterns:
