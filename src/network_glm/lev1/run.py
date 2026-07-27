@@ -135,10 +135,11 @@ def get_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--confounds-mode",
-        choices=["full", "no-motion", "task-only"],
+        choices=["full", "no-motion", "no-cosine", "task-only"],
         default="full",
         help="Nuisance regressors in the lev1 design: full (cosine+24p motion+spikes), "
-        "no-motion (cosine only), task-only (none). NSI-experiment arms.",
+        "no-motion (cosine only), no-cosine (24p motion+spikes only -- no drift "
+        "model), task-only (none). NSI-experiment arms.",
     )
     parser.add_argument(
         "--mni-template",

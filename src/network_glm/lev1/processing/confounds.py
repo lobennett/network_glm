@@ -19,9 +19,10 @@ def _get_base_confound_pattern(
         confounds_mode: Which nuisance regressors to include. ``"full"``
             includes drift cosines + the 24-parameter motion model +
             motion-outlier spikes (previous, unchanged behavior).
-            ``"no-motion"`` includes only the drift cosines. ``"task-only"``
-            is handled upstream in ``load_and_process_confounds`` (no
-            pattern is built at all).
+            ``"no-motion"`` includes only the drift cosines. ``"no-cosine"``
+            includes only motion + spikes, leaving drift unmodelled.
+            ``"task-only"`` is handled upstream in
+            ``load_and_process_confounds`` (no pattern is built at all).
 
     Returns:
         Regex pattern for confound selection
@@ -61,6 +62,13 @@ def _get_base_confound_pattern(
 
     if confounds_mode == "no-motion":
         return cosine
+    if confounds_mode == "no-cosine":
+        # Motion regressed, drift NOT modelled. The DCT cosines are the only
+        # high-pass in this design (see create_design_matrix), so dropping them
+        # leaves low-frequency drift in the residuals -- deliberate for the NSI
+        # experiment, where `no-motion` (cosines kept) did not move the score and
+        # the cosine set is the remaining suspect. Not a sensible default.
+        return motion
     return f"{cosine}|{motion}"
 
 
@@ -83,7 +91,8 @@ def load_and_process_confounds(
         confounds_mode: Which nuisance regressors to include in the lev1
             design: ``"full"`` (cosine drift + 24-parameter motion + spike
             regressors, the previous default behavior), ``"no-motion"``
-            (cosine drift only), or ``"task-only"`` (no nuisance
+            (cosine drift only), ``"no-cosine"`` (24-parameter motion +
+            spikes only, no drift model), or ``"task-only"`` (no nuisance
             regressors at all; rows are still preserved for design-matrix
             concatenation). NSI-experiment arms.
 
