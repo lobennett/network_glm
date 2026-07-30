@@ -209,6 +209,108 @@ def add_junk_trials(events_df: pd.DataFrame, task_name: str) -> tuple[pd.DataFra
     return events_df, junk_percentage
 
 
+def stop_fail_violation(events: pd.DataFrame,
+        trial_id: str = "trial_id",
+        trial_type: str = "trial_type",
+        rt: str = "response_time",
+        output: str = "stop_failure_violation",
+        go: str = "go",
+        min_go_rt: float = 0.2,) -> pd.DataFrame:
+    """
+    Add a per-run column with the violation amplitude for stop_failure trials
+    For each stop_failure trial:
+      amplitude = stop_failure_rt of trial N - valid_go_rt of trial N-1
+    """
+    df = events.copy()
+
+    if "onset" in df.columns:
+        df = df.sort_values("onset").reset_index(drop = True)
+    else:
+        df = df.reset_index(drop = True)
+
+    df["rt_num"] = pd.to_numeric(df[rt], errors = "coerce")
+
+    def check_if_test_trial(idx: int) -> bool:
+    # Returns tru if the row is a test_trial and false if it is a test_fixation or na/n
+        if idx < 0 or idx >= len(df):
+            return False
+
+        if trial_id and trial_id in df.columns:
+            val = df.at[idx, trial_id]
+            return val == "test_trial"
+
+        logger.warning("no valid trial_id found; treating all rows as non_test (no violations will be found")
+        return False
+
+    def prev_is_valid_go(prev_idx: int) -> bool:
+        if prev_idx < 0 or prev_idx >= len(df):  #bounds check
+            return False
+
+        if df.at[prev_idx, trial_type] != go:   #check if prev test_trial is go
+            return False
+
+        prev_rt = df.at[prev_idx, "rt_num"]    #RT invalid if -1 or NaN
+        if pd.isna(prev_rt):
+            return False
+        if prev_rt == -1:  #omission
+            return False
+        if prev_rt < min_go_rt:  #too fast
+            return False
+
+        if ("key_press" in df.columns) and ("correct_response" in df.columns):   #checks go_acc
+            key_press = pd.to_numeric(df.at[prev_idx, "key_press"], errors = "coerce")
+            correct_resp = pd.to_numeric(df.at[prev_idx, "correct_response"], errors = "coerce")
+            if key_press != correct_resp or pd.isna(key_press) or pd.isna(correct_resp):
+                return False
+
+        return True
+
+    amplitudes = []
+    amp_indices = []
+    prev_test_idx = None
+
+    for idx in range(len(df)):
+        if not check_if_test_trial(idx):  #skips non_test trials
+            continue
+
+        cur_trial_type = df.at[idx, trial_type]
+
+        if cur_trial_type == "stop_failure":
+            if prev_test_idx is None:  #no previous test trial to pair with
+                prev_test_idx = idx
+                continue
+
+            cur_rt = df.at[idx, "rt_num"]
+            if pd.isna(cur_rt):
+                prev_test_idx = idx
+                continue
+
+            if prev_is_valid_go(prev_test_idx):
+                prev_rt_val = df.at[prev_test_idx, "rt_num"]
+                amp = float(cur_rt) - float(prev_rt_val)
+                amplitudes.append(amp)
+                amp_indices.append(idx)
+        prev_test_idx = idx
+
+    df[output] = np.nan
+    n_violations = len(amplitudes)
+    if n_violations == 0:
+        logger.warning("stop_fail_violation: run produced zero defined violations; '%s' is all NaN", output)
+    elif n_violations == 1:
+        logger.warning(
+            "stop_fail_violation: run produced one defined violation, after centering it would be 0.0 and dropped 
+downstream. Leaving all '%s' NaN",
+            output,
+        )
+    else:
+        mean_amp = float(np.mean(amplitudes))
+        centered = [each - mean_amp for each in amplitudes]
+        for i, v in zip(amp_indices, centered):
+            df.at[i, output] = v
+    df.drop(columns = ["rt_num"], inplace = True)
+
+    return df
+
 def save_simplified_events(regressor_3cols: list, output_file: str | Path) -> Path:
     """Save simplified events in 3-column format.
 

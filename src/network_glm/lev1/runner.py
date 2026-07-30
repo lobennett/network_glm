@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from network_glm.lev1.proccessing.violation import stop_fail_violation
 from network_glm.exclusions import load_contrast_exclusions
 from network_glm.lev1.processing.cifti_io import load_dtseries
 from network_glm.lev1.processing.confounds import (
@@ -29,6 +30,7 @@ from network_glm.lev1.processing.events import (
     load_bold_data_with_dummy_removal,
     preprocess_events,
     save_simplified_events,
+    stop_fail_violation,
 )
 from network_glm.lev1.processing.fixed_effects import compute_subject_fixed_effects
 from network_glm.lev1.processing.glm import (
@@ -357,6 +359,13 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     events_df = pd.read_csv(run_files["events"], sep="\t")
     processed_events = preprocess_events(events_df, args.task_name, n_scans=n_scans, tr=tr)
     processed_events_with_junk, percent_junk = add_junk_trials(processed_events, args.task_name)
+
+    task_name_norm = (args.task_name or "").strip().lower()
+    if task_name_norm in ("stopsignal", "stop_signal"):
+    	try:
+    		processed_events_with_junk = stop_fail_violation(processed_events_with_junk)
+    	except Exception:
+    		logger.exception("stop_fail_violation failed for %s/%s - continuing without it", session, run)
 
     # Load confounds. BOLD is pre-trimmed by scripts/trim_bold.py and fMRIPrep
     # is run with --dummy-scans 0, so the confounds TSV already matches the
