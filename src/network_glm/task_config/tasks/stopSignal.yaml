@@ -38,6 +38,11 @@ regressors:
     duration: 1
     subset: "trial_type == 'stop_success'"
 
+  stop_fail_violation:
+    amplitude: stop_failure_violation
+    duration: 1
+    subset: "trial_type == 'stop_failure'"
+
   stop_failure:
     amplitude: 1
     duration: 1
@@ -80,5 +85,6 @@ contrasts:
   stop_failure-go: "stop_failure - go"
   stop_success-stop_failure: "stop_success - stop_failure"
   stop_failure-stop_success: "stop_failure - stop_success"
+  stop_failure_violation: "stop_failure_violation"
   task-baseline: "1/3 * go + 1/3 * stop_failure + 1/3 * stop_success"
   response_time: "response_time"
