@@ -394,6 +394,8 @@ def process_single_run(
     )
 
     task_name_norm = (args.task_name or "").strip().lower()
+    #Scope note: task-name gating for the stop_fail_violation regressor 
+    #does not extend to the dual tasks
     if task_name_norm in ("stopsignal", "stop_signal"):
         processed_events_with_junk = stop_fail_violation(processed_events_with_junk)
 
