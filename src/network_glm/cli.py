@@ -21,13 +21,19 @@ def _cohort_main(argv):
     return main(argv)
 
 
+def _design_plots_main(argv):
+    from network_glm.qc.design_plots import main
+
+    return main(argv)
+
+
 def _submit_main(argv):
     from network_glm.submit import main
 
     return main(argv)
 
 
-_ROUTE_NAMES = ("lev1", "lev2", "cohort-outliers", "submit")
+_ROUTE_NAMES = ("lev1", "lev2", "cohort-outliers", "design-plots", "submit")
 
 
 def main(argv=None):
@@ -42,6 +48,7 @@ def main(argv=None):
         "lev1": _lev1_main,
         "lev2": _lev2_main,
         "cohort-outliers": _cohort_main,
+        "design-plots": _design_plots_main,
         "submit": _submit_main,
     }[argv[0]]
     return handler(argv[1:])

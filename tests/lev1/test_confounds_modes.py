@@ -32,6 +32,22 @@ def test_no_motion_drops_motion_and_spikes(tmp_path):
     assert not any(c.startswith("motion_outlier") for c in df.columns)
 
 
+def test_no_cosine_drops_cosines_keeps_motion(tmp_path):
+    """The fourth cell of the 2x2: motion regressed, drift NOT modelled.
+
+    Asked for by the NSI experiment — `no-motion` (cosines only) did not move the
+    score, so this isolates the cosine set as the suspect. Note it leaves the run
+    with no high-pass at all: the DCT cosines are the only drift model in the lev1
+    design, and the fsLR residual path is run with --no-residual-filter.
+    """
+    df = load_and_process_confounds(_write_confounds(tmp_path), "stopSignal",
+                                    "validation", confounds_mode="no-cosine")
+    assert not any(c.startswith("cosine") for c in df.columns)
+    assert "trans_x" in df.columns and "trans_x_derivative1" in df.columns
+    assert "rot_z" in df.columns and "motion_outlier00" in df.columns
+    assert "csf" not in df.columns and "global_signal" not in df.columns
+
+
 def test_task_only_drops_everything(tmp_path):
     df = load_and_process_confounds(_write_confounds(tmp_path), "stopSignal",
                                     "validation", confounds_mode="task-only")

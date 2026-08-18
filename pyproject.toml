@@ -6,20 +6,23 @@ build-backend = "hatchling.build"
 name = "network_glm"
 version = "0.1.0"
 description = "r01network first- and second-level task-fMRI GLMs (lev1/lev2) + cohort outlier detection"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "pyyaml>=6.0.3",
-    # Scientific stack PINNED to the neuro_workflow@main lock versions. Two reasons:
-    # (1) fresh resolution grabs newest releases that lack cp313 manylinux2014
-    #     (glibc-2.17 / CentOS 7) wheels and fall back to source builds that fail
-    #     (pillow 12.3.0 no wheel; scipy 1.18.0 needs external OpenBLAS; etc.).
-    # (2) byte-identical verification vs the monolith needs the same numeric stack.
-    "numpy==2.4.2",
-    "scipy==1.17.1",
-    "pandas==3.0.1",
-    "nibabel==5.4.0",
-    "nilearn==0.13.1",
-    "statsmodels>=0.14",
+    # Scientific stack PINNED to a set proven to install on Sherlock's CentOS 7
+    # (glibc 2.17) compute nodes — copied from the validated /scratch .venv_nort env.
+    # Newer releases publish only manylinux_2_28 wheels for cp313 and fall back to
+    # source builds that fail here (pillow 12.3.0 no wheel; scipy >=1.17 needs an
+    # external OpenBLAS that isn't installed). scipy 1.14.1 is the newest with a
+    # working cp311 manylinux2014 wheel, which is why this env targets python 3.11.
+    # The byte-identical verification run (see docs plan Phase 6) happens inside the
+    # container against the monolith's own stack; this env is for dev + offline tests.
+    "numpy==2.2.6",
+    "scipy==1.14.1",
+    "pandas==3.0.3",
+    "nibabel==5.4.2",
+    "nilearn==0.14.0",
+    "statsmodels==0.14.6",
     "matplotlib==3.10.8",
     "pillow==12.1.1",
     "seaborn",
