@@ -40,6 +40,7 @@ def create_regressor(
     n_scans: int,
     regressor_name: str,
     tr: float = 1.49,
+    slice_time_ref: float = 0.0,
 ) -> tuple[pd.DataFrame, tuple]:
     """Create a single regressor from events data.
 
@@ -49,6 +50,10 @@ def create_regressor(
         n_scans: Number of scans in the run
         regressor_name: Name of the regressor
         tr: Repetition time in seconds
+        slice_time_ref: Seconds added to frame_times to match the slice-timing
+            reference the data were corrected to. Resolve it from the BOLD
+            sidecar via :func:`network_glm.acquisition.resolve_slice_time_ref`;
+            0.0 means no slice-timing correction was applied.
 
     Returns:
         Tuple of (regressor DataFrame, 3-column format tuple)
@@ -105,10 +110,12 @@ def create_regressor(
             regressor_3col = ([], [], [])
             return regressor_df, regressor_3col
 
-        # Shift frame_times by +TR/2 to align with fMRIPrep's slice timing
-        # correction, which references the middle slice (Poldrack & Mumford,
-        # 2021; https://reproducibility.stanford.edu/slice-timing-correction-in-fmriprep-and-linear-modeling/).
-        frame_times = np.arange(n_scans) * tr + tr / 2
+        # Sample the regressor at the slice-timing reference the data were
+        # corrected to, which fMRIPrep records as StartTime in the sidecar.
+        # This used to be hardcoded to +TR/2, which is only equal to that
+        # reference for a gapless acquisition (see
+        # network_glm.acquisition.resolve_slice_time_ref).
+        frame_times = np.arange(n_scans) * tr + slice_time_ref
         regressor_values, _ = compute_regressor(
             exp_condition=(onsets, durations, amplitudes),
             hrf_model="spm",
@@ -130,6 +137,7 @@ def create_design_matrix(
     task_name: str,
     n_scans: int,
     tr: float = 1.49,
+    slice_time_ref: float = 0.0,
 ) -> tuple[pd.DataFrame, list[tuple]]:
     """Create complete design matrix from events and confounds.
 
@@ -139,6 +147,8 @@ def create_design_matrix(
         task_name: Name of the task
         n_scans: Number of scans in the run
         tr: Repetition time in seconds
+        slice_time_ref: Seconds added to frame_times to match the slice-timing
+            reference the data were corrected to (see :func:`create_regressor`).
 
     Returns:
         Tuple of (design_matrix DataFrame, list of regressor 3-column tuples)
@@ -160,7 +170,9 @@ def create_design_matrix(
     regressor_3cols = []
 
     for name, config in task_config.items():
-        reg_df, reg_3col = create_regressor(events_df, config, n_scans, name, tr)
+        reg_df, reg_3col = create_regressor(
+            events_df, config, n_scans, name, tr, slice_time_ref=slice_time_ref
+        )
         regressors[name] = reg_df
         regressor_3cols.append((reg_3col, name))
 
