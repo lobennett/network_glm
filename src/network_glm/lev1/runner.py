@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from network_glm.acquisition import resolve_slice_time_ref
 from network_glm.exclusions import load_contrast_exclusions
 from network_glm.lev1.processing.cifti_io import load_dtseries
 from network_glm.lev1.processing.confounds import (
@@ -336,12 +337,14 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
         import nibabel as nib
 
         n_scans = nib.load(str(run_files["cifti_bold"])).shape[0]
+        bold_for_sidecar = run_files["cifti_bold"]
     elif is_surface_space(args.space):
         if "left_surface" not in run_files or "right_surface" not in run_files:
             raise ValueError(f"Missing surface files for {session}/{run}")
         n_scans_total, _ = get_surface_scan_info(run_files["left_surface"])
         # BOLD is already trimmed by trim_bold.py; do not remove dummy scans again
         n_scans = n_scans_total
+        bold_for_sidecar = run_files["left_surface"]
     else:
         mask_key = f"{args.space.lower()}_brain_mask"
         data_key = f"{args.space.lower()}_data"
@@ -350,6 +353,12 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
         # BOLD is already trimmed by trim_bold.py; load without further removal
         bold_data = load_bold_data_with_dummy_removal(run_files[data_key], dummy_scans=0)
         n_scans = bold_data.shape[3]
+        bold_for_sidecar = run_files[data_key]
+
+    # Align the design with the slice-timing reference the data were corrected
+    # to (fMRIPrep's StartTime), rather than assuming TR/2.
+    slice_time_ref = resolve_slice_time_ref(bold_for_sidecar)
+    logger.info("Slice-timing reference for %s/%s: %.4fs", session, run, slice_time_ref)
 
     # Load and preprocess events
     # Onsets are already adjusted for dummy scans during event file creation
@@ -375,6 +384,7 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
         args.task_name,
         n_scans,
         tr,
+        slice_time_ref=slice_time_ref,
     )
     logger.debug("Design matrix shape: %s", design_matrix.shape)
 
