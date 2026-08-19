@@ -15,8 +15,8 @@ dependencies = [
     # source builds that fail here (pillow 12.3.0 no wheel; scipy >=1.17 needs an
     # external OpenBLAS that isn't installed). scipy 1.14.1 is the newest with a
     # working cp311 manylinux2014 wheel, which is why this env targets python 3.11.
-    # The byte-identical verification run (see docs plan Phase 6) happens inside the
-    # container against the monolith's own stack; this env is for dev + offline tests.
+    # The byte-identical verification run happens inside the container against the
+    # monolith's own stack; this env is for dev + offline tests.
     "numpy==2.2.6",
     "scipy==1.14.1",
     "pandas==3.0.3",
