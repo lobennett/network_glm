@@ -381,12 +381,9 @@ class TestExclusionKeyMatchesRunnerForAllGenerators:
     ``task`` field PREFIXED (``task-goNogo``) and ``run`` as ``run-N`` so behavioral
     and motion exclusions are honored identically by lev1.
 
-    NOTE (network_glm lift-and-shift): the monolith also had
-    ``test_behavioral_generator_emits_prefixed_task_and_run`` here, which
-    exercised the monolith's events/behavioral-QC ``run_qc`` entry point.
-    That module is out of scope for network_glm (engine-only extraction), so
-    that test was dropped; the schema invariant it protected is still
-    covered by the sibling test below using hand-built compiled entries.
+    The behavioural-QC entry point that used to be covered here lives in
+    network_qa now; the schema invariant is still checked by the sibling test
+    below, using hand-built compiled entries.
     """
 
     def test_motion_and_behavioral_entries_both_match_runner_key(self, temp_dir):

@@ -27,9 +27,6 @@ THRESHOLDS_PATH = Path(__file__).resolve().parent / "config" / "thresholds.yaml"
 
 # Task battery config (de-hardcoded in PR3b). Folded into config_version so the
 # provenance hash also tracks the canonical task list.
-# NOTE (network_glm lift-and-shift): battery.yaml now lives at
-# src/network_glm/task_config/battery.yaml (sibling of this file), so this
-# resolves from parent, not parents[1]/"analysis"/... as in the source layout.
 _BATTERY_PATH = Path(__file__).resolve().parent / "task_config" / "battery.yaml"
 
 

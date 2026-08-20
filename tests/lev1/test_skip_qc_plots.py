@@ -13,9 +13,8 @@ This test verifies:
 2. Contrast files are still saved when QC plots are skipped — the flag
    must not accidentally short-circuit the contrast-writing code.
 
-NOTE: the monolith also had two tests here covering pipeline-level sbatch-context
-propagation of ``--skip-qc-plots``. Slurm submission is not this package's concern --
-network_fmri owns it -- so those tests belong there, and were dropped here.
+Slurm-context propagation of ``--skip-qc-plots`` is network_fmri's concern, so it is
+not tested here.
 """
 
 from __future__ import annotations

@@ -423,8 +423,6 @@ def _make_exclusion_key(sc: ScanContrast) -> str:
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point: run cohort outlier QC on lev1 outputs.
 
-    Mirrors the monolith's ``scripts/lev1_outliers.py`` driver.
-
     Usage:
         network-glm cohort-outliers \\
             --lev1-dir /scratch/.../lev1_discovery \\

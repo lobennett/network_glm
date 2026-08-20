@@ -231,9 +231,8 @@ def _jsonify(value):
     unknown types are stringified with their class name so json.dumps
     doesn't crash on the audit-trail write path.
 
-    Vendored verbatim from neuro_workflow.exclusions.base (network_glm
-    lift-and-shift): provenance.write_run_manifest reuses it to keep one
-    JSON-safe path, and it belongs with the other lockfile/exclusion helpers.
+    Lives here rather than in provenance.py so there is one JSON-safe path, shared
+    with write_run_manifest.
     """
     if isinstance(value, Path):
         return str(value)

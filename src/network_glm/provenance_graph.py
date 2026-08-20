@@ -37,10 +37,6 @@ from network_glm.provenance import _now_iso, git_sha
 
 # Repo root anchor (monkeypatchable in tests). Same resolution as provenance.py:
 # src/network_glm/provenance_graph.py -> parents[2] == repo root.
-# NOTE (network_glm lift-and-shift): the source monolith had this module one
-# directory deeper (core/provenance_graph.py under the old package root,
-# parents[3]); the index below was adjusted to match this package's shallower
-# layout.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # fMRIPrep derivative directory name (matches the committed pipeline output).

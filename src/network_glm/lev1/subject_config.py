@@ -3,8 +3,7 @@
 Defines :class:`Config`, the resolved bids/fmriprep/output paths plus the
 subject/task identity that :mod:`.prepare` builds and the per-run
 :mod:`.runner` consumes. Lives under ``lev1/`` rather than a top-level
-``config`` module to avoid a name collision with the unrelated dataset-registry
-config module in the source monolith this package was lifted from.
+``config`` to avoid colliding with the unrelated dataset-registry config module.
 """
 
 import logging

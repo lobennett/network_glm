@@ -1,13 +1,10 @@
 # Canonical, study-level analysis thresholds (config-as-code).
 #
-# Single source of truth for the QC / motion / lev1-outlier cutoffs that used to
-# live as hardcoded literals in the Python source. Loaded at import by
-# neuro_workflow.core.thresholds; the public constant names in
-# events/qc_globals.py and the argparse defaults in the motion / lev1_outlier
-# exclusion generators are bound from these values, so behavior is unchanged.
+# Single source of truth for the QC / motion / lev1-outlier cutoffs. Loaded at
+# import by thresholds.py, which binds the public constant names and the argparse
+# defaults in the exclusion generators.
 #
-# This is STUDY-LEVEL, not per-dataset. Every value below is byte-identical to
-# the pre-refactor literal it replaced. Changing a value here changes the study
+# This is STUDY-LEVEL, not per-dataset. Changing a value here changes the study
 # threshold everywhere it is consumed.
 
 # --- Behavioral QC (in-scanner task performance) ---

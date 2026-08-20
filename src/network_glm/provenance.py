@@ -1,8 +1,7 @@
 """Reusable provenance primitives for analysis-stage outputs.
 
-Generalizes the lockfile pattern already used by the source monolith's
-exclusions-compiler (UTC ISO timestamp, git SHA, file paths
-and counts) into composable helpers any stage can call to record:
+Composable helpers any stage can call to record a UTC ISO timestamp, git SHA,
+and the paths and counts of what it consumed:
 
 - the exact code state (``git_sha`` / ``git_is_dirty``),
 - the locked dependency set (``uv_lock_hash``, ``tool_versions``),
@@ -34,9 +33,6 @@ from network_glm.thresholds import config_version
 # Repo root resolved from this file's location:
 # src/network_glm/provenance.py -> parents[0]=network_glm, parents[1]=src,
 # parents[2]=repo root.
-# NOTE (network_glm lift-and-shift): the source monolith had this module one
-# directory deeper (core/provenance.py under the old package root, parents[3]);
-# the index below was adjusted to match this package's shallower layout.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # UTC ISO timestamp format, byte-identical to the exclusions lockfile.
