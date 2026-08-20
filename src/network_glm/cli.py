@@ -1,4 +1,8 @@
-"""network-glm — dispatch to the lev1/lev2/cohort runners and the submit layer."""
+"""network-glm — dispatch to the lev1/lev2/cohort runners.
+
+Compute entry points only. Slurm submission lives in network_fmri, which owns
+orchestration for every stage of the pipeline; this package is a library.
+"""
 
 import sys
 
@@ -27,13 +31,7 @@ def _design_plots_main(argv):
     return main(argv)
 
 
-def _submit_main(argv):
-    from network_glm.submit import main
-
-    return main(argv)
-
-
-_ROUTE_NAMES = ("lev1", "lev2", "cohort-outliers", "design-plots", "submit")
+_ROUTE_NAMES = ("lev1", "lev2", "cohort-outliers", "design-plots")
 
 
 def main(argv=None):
@@ -49,7 +47,6 @@ def main(argv=None):
         "lev2": _lev2_main,
         "cohort-outliers": _cohort_main,
         "design-plots": _design_plots_main,
-        "submit": _submit_main,
     }[argv[0]]
     return handler(argv[1:])
 

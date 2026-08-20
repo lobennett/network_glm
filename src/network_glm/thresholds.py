@@ -1,6 +1,6 @@
 """Single source for study-level analysis thresholds (config-as-code).
 
-Loads ``config/thresholds.yaml`` (repo root) once at import. The public
+Loads ``config/thresholds.yaml`` (package data) once at import. The public
 threshold constants in the sibling events QC-globals module and the argparse
 defaults in the motion / lev1_outlier exclusion generators are bound from these
 values, so externalizing them is behavior-preserving.
@@ -22,14 +22,12 @@ from typing import Any
 
 import yaml
 
-# config/thresholds.yaml lives at the repo root, next to pipeline_config.json.
-# This module is at src/network_glm/thresholds.py, so parents[2] resolves to
-# <repo root>: network_glm -> src -> <repo root>.
-# NOTE (network_glm lift-and-shift): the source monolith had this module one
-# directory deeper (core/thresholds.py under the old package root, parents[3]);
-# the index below was adjusted to match this package's shallower layout.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-THRESHOLDS_PATH = _REPO_ROOT / "config" / "thresholds.yaml"
+# thresholds.yaml is package data, resolved from __file__ exactly as battery.yaml is
+# below. It used to sit at the repo root (parents[2]), which worked from a checkout but
+# not from an installed wheel: the path resolved into site-packages' parent and the
+# fail-loud check below raised on every import. That made the package unusable as a
+# dependency, which is how network_fmri now consumes it.
+THRESHOLDS_PATH = Path(__file__).resolve().parent / "config" / "thresholds.yaml"
 
 # Task battery config (de-hardcoded in PR3b). Folded into config_version so the
 # provenance hash also tracks the canonical task list.
@@ -56,7 +54,7 @@ def load_thresholds(path: Path | None = None) -> dict[str, Any]:
     if not cfg_path.is_file():
         raise FileNotFoundError(
             f"thresholds config not found: {cfg_path}. "
-            "config/thresholds.yaml is the single source of truth for analysis "
+            "thresholds.yaml is the single source of truth for analysis "
             "thresholds; it must exist (no silent fallback)."
         )
     with cfg_path.open(encoding="utf-8") as fh:

@@ -7,11 +7,9 @@ def test_dispatch_routes(monkeypatch):
     monkeypatch.setattr(cli, "_lev1_main", lambda argv: seen.setdefault("lev1", argv))
     monkeypatch.setattr(cli, "_lev2_main", lambda argv: seen.setdefault("lev2", argv))
     monkeypatch.setattr(cli, "_cohort_main", lambda argv: seen.setdefault("cohort", argv))
-    monkeypatch.setattr(cli, "_submit_main", lambda argv: seen.setdefault("submit", argv))
     cli.main(["lev1", "--subj-id", "s03"]); assert seen["lev1"] == ["--subj-id", "s03"]
     cli.main(["lev2", "--contrast", "x"]); assert seen["lev2"] == ["--contrast", "x"]
     cli.main(["cohort-outliers", "--lev1-dirs", "d"]); assert seen["cohort"] == ["--lev1-dirs", "d"]
-    cli.main(["submit", "lev1"]); assert seen["submit"] == ["lev1"]
 
 
 def test_unknown_subcommand_errors():
