@@ -241,7 +241,7 @@ src/network_glm/
 ├── exclusions.py        scan-level exclusion handling (--exclusions-file)
 ├── provenance.py        provenance primitives for analysis-stage outputs
 ├── provenance_graph.py  assembles the full chain into one machine-readable graph
-├── thresholds.py        study-level thresholds as code (config/thresholds.yaml)
+├── thresholds.py        study-level thresholds as code (config/thresholds.yaml, package data)
 ├── acquisition.py       scanner-acquisition constants
 └── task_utils.py        task helpers
 ```
