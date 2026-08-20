@@ -1,34 +1,25 @@
 # network_glm
 
-First- and second-level task-fMRI GLMs for the r01network study, plus cohort-level
-outlier QC. Extracted from `neuro_workflow@246cdf73` as a faithful lift-and-shift.
-
-The package fits per-run GLMs from BIDS events + fMRIPrep derivatives (`lev1`),
-combines runs within a subject via fixed effects, runs group-level permutation
-tests (`lev2`), and flags cohort outliers from the resulting contrast maps.
-Volumetric, surface, and CIFTI analysis spaces are supported.
-
----
+First- and second-level task-fMRI GLMs for the r01network study, plus cohort-level outlier QC.
+Fits per-run GLMs from BIDS events + fMRIPrep derivatives (`lev1`), combines runs within a subject
+by fixed effects, runs group-level permutation tests (`lev2`), and flags cohort outliers from the
+resulting contrast maps. Volumetric, surface and CIFTI spaces are supported.
 
 ## Environment
 
-The scientific stack is **pinned**, and installs on Sherlock's CentOS 7 (glibc 2.17)
-compute nodes at python 3.11 **and** 3.13: numpy, scipy, statsmodels and matplotlib all
-resolve to `manylinux_2_17` wheels, and pandas source-builds cleanly. `pillow<12` is the
-one real constraint — pillow 12's source build needs libjpeg headers the host lacks.
-
 ```bash
-uv sync          # local development
-uv run pytest    # 396 tests
+uv sync
+uv run pytest
 ```
 
-There is no container. This package is a library, installed as a dependency of
-[network_fmri](https://github.com/lobennett/network_fmri), which owns Slurm submission for
-every stage of the pipeline. Run the models from there.
+No container: this is a library, installed as a pinned dependency of
+[network_fmri](https://github.com/lobennett/network_fmri), which owns Slurm submission for every
+stage. Run the models from there. `pillow<12` is the one hard pin — pillow 12 needs libjpeg headers
+Sherlock lacks.
 
-FSL (`lev2` volume randomise) and FreeSurfer 8.1 (surface smoothing via `mri_surf2surf`)
-are external, licensed tools that were never bundled here either. network_fmri
-`module load`s them on the host, and only when a run actually needs them.
+FSL (`lev2` volume randomise) and FreeSurfer (surface smoothing via `mri_surf2surf`) are external
+licensed tools, never bundled. network_fmri `module load`s them on the host, and only when a run
+actually needs them.
 
 ## Running the models
 
@@ -154,45 +145,19 @@ Fixed-effects maps computed from fewer than `--min-runs` (default 2) runs are ta
 
 ```
 src/network_glm/
-├── cli.py               top-level dispatch → lev1 | lev2 | cohort-outliers
-│                        | design-plots
-├── lev1/
-│   ├── run.py           CLI entry, argument parsing
-│   ├── prepare.py       setup + input discovery
-│   ├── subject_config.py  per-subject output layout
-│   ├── runner.py        per-run processing + fixed-effects orchestration
-│   ├── spaces.py        analysis-space helpers (volume/surface/CIFTI branching)
-│   └── processing/
-│       ├── events.py          BIDS events → design regressors
-│       ├── confounds.py       confound selection, dummy scans, spike regressors
-│       ├── design.py          design matrix construction
-│       ├── glm.py             model fitting
-│       ├── contrasts.py       contrast computation and saving
-│       ├── fixed_effects.py   across-run combination
-│       ├── residuals.py       residual extraction + band-pass filtering
-│       ├── cifti_io.py        fsLR den-91k .dtseries.nii read/write
-│       ├── surface_data.py    GIFTI surface loading
-│       ├── masks.py           brain-mask intersection
-│       ├── imaging.py         image-dtype helpers for map saving
-│       └── quality_control.py VIFs, design diagnostics
-├── lev2/
-│   ├── run.py           group-level CLI; volume path via FSL randomise
-│   ├── discover.py      contrast names present in a lev1 tree (used to fan out)
-│   └── surface.py       sign-flip permutation group test on GIFTI surfaces
-├── cohort/outliers.py   cohort-level outlier QC over lev1 contrast maps
-├── config/thresholds.yaml  study-level thresholds (package data, see thresholds.py)
-├── task_config/
-│   ├── battery.yaml     base/dual task lists (canonical order)
-│   ├── tasks/*.yaml     per-task regressors, contrasts, parameters
-│   └── loader.py        YAML load + contrast validation
-├── io/file_discovery.py BIDS + fMRIPrep file discovery
-├── qc/design_plots.py   post-hoc design/contrast/correlation figures
-├── exclusions.py        scan-level exclusion handling (--exclusions-file)
-├── provenance.py        provenance primitives for analysis-stage outputs
-├── provenance_graph.py  assembles the full chain into one machine-readable graph
-├── thresholds.py        study-level thresholds as code (config/thresholds.yaml, package data)
-├── acquisition.py       scanner-acquisition constants
-└── task_utils.py        task helpers
+  cli.py            dispatch: lev1 | lev2 | cohort-outliers | design-plots
+  lev1/             per-run fitting: prepare -> runner -> processing/*
+  lev1/processing/  events, confounds, design, glm, contrasts, fixed_effects,
+                    residuals, masks, quality_control, and the surface/CIFTI IO
+  lev2/             group level: run.py (FSL randomise), surface.py (sign-flip
+                    permutation), discover.py (contrast names, for fan-out)
+  cohort/           outlier QC over lev1 contrast maps
+  task_config/      battery.yaml + tasks/<task>.yaml + loader with validation
+  config/           thresholds.yaml, packaged as data (read via thresholds.py)
+  io/               BIDS + fMRIPrep file discovery
+  qc/               post-hoc design/contrast/correlation figures
+  exclusions.py     --exclusions-file handling
+  provenance.py     input manifests; provenance_graph.py assembles the chain
 ```
 
 ### Provenance
