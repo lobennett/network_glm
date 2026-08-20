@@ -6,17 +6,26 @@ build-backend = "hatchling.build"
 name = "network_glm"
 version = "0.1.0"
 description = "r01network first- and second-level task-fMRI GLMs (lev1/lev2) + cohort outlier detection"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0.3",
     # Scientific stack PINNED to a set proven to install on Sherlock's CentOS 7
-    # (glibc 2.17) compute nodes — copied from the validated /scratch .venv_nort env.
-    # Newer releases publish only manylinux_2_28 wheels for cp313 and fall back to
-    # source builds that fail here (pillow 12.3.0 no wheel; scipy >=1.17 needs an
-    # external OpenBLAS that isn't installed). scipy 1.14.1 is the newest with a
-    # working cp311 manylinux2014 wheel, which is why this env targets python 3.11.
-    # The byte-identical verification run happens inside the container against the
-    # monolith's own stack; this env is for dev + offline tests.
+    # (glibc 2.17) compute nodes, on python 3.11 AND 3.13.
+    #
+    # Re-verified 2026-08-19 at 3.13 on a glibc 2.17 node: numpy, scipy, statsmodels and
+    # matplotlib all resolve to manylinux_2_17 (== glibc 2.17) wheels — scipy's needs at
+    # most glibc symbol 2.14 and links with no unresolved libraries — and pandas 3.0.x,
+    # which publishes no wheel for this platform, source-builds cleanly via meson without
+    # needing OpenBLAS. The one real wall is pillow 12, whose source build wants libjpeg
+    # headers this host lacks; hence pillow<12, which is what matplotlib gets anyway.
+    #
+    # The old <3.12 cap assumed scipy 1.14.1 was the ceiling because it was the newest
+    # with a cp311 manylinux2014 wheel. That reasoning does not carry to cp313, where
+    # newer scipy publishes glibc-2.17 wheels. Dropping the cap lets network_fmri carry
+    # this package as a pinned dependency and run it as a pipeline stage alongside
+    # fw-heudiconv and network_events, instead of only inside the container.
+    #
+    # The container remains the reference environment for publication runs.
     "numpy==2.2.6",
     "scipy==1.14.1",
     "pandas==3.0.3",
@@ -24,7 +33,7 @@ dependencies = [
     "nilearn==0.14.0",
     "statsmodels==0.14.6",
     "matplotlib==3.10.8",
-    "pillow==12.1.1",
+    "pillow<12",
     "seaborn",
     "randomise-prep @ git+https://github.com/jmumford/randomise-prep.git",
     "network_qa @ git+https://github.com/lobennett/network_qa.git",

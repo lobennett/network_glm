@@ -13,13 +13,9 @@ This test verifies:
 2. Contrast files are still saved when QC plots are skipped — the flag
    must not accidentally short-circuit the contrast-writing code.
 
-NOTE (network_glm lift-and-shift): the monolith also had two tests here
-covering the pipeline-level ``neuro-run submit lev1 ... --skip-qc-plots``
-sbatch-context propagation (the monolith's ``Lev1Pipeline`` class, in its
-``pipelines`` package). That pipeline/submit-context class is out of scope
-for network_glm's engine-only extraction (``network_glm.submit`` is a
-from-scratch layer, not a port of the monolith's pipeline classes), so
-those two tests were dropped.
+NOTE: the monolith also had two tests here covering pipeline-level sbatch-context
+propagation of ``--skip-qc-plots``. Slurm submission is not this package's concern --
+network_fmri owns it -- so those tests belong there, and were dropped here.
 """
 
 from __future__ import annotations
