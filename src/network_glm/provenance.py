@@ -52,13 +52,10 @@ def _now_iso() -> str:
 
 
 def _installed_commit() -> str | None:
-    """The commit this package was installed from, for a VCS install.
+    """The commit this package was installed from, per PEP 610 ``direct_url.json``.
 
-    When the package is installed as a dependency rather than run from a checkout,
-    ``_REPO_ROOT`` is inside site-packages and no git repo exists there, so the git
-    lookup below returns the ``"unknown"`` sentinel and provenance silently loses the
-    code version. Installers record the resolved commit in ``direct_url.json``
-    (PEP 610), so recover it from there.
+    Installed as a dependency there is no git repo to query, so this is the only
+    record of the code version.
     """
     try:
         raw = _ilmd.distribution("network_glm").read_text("direct_url.json")

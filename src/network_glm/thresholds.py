@@ -22,11 +22,7 @@ from typing import Any
 
 import yaml
 
-# thresholds.yaml is package data, resolved from __file__ exactly as battery.yaml is
-# below. It used to sit at the repo root (parents[2]), which worked from a checkout but
-# not from an installed wheel: the path resolved into site-packages' parent and the
-# fail-loud check below raised on every import. That made the package unusable as a
-# dependency, which is how network_fmri now consumes it.
+# Package data, so it resolves the same from a checkout and an installed wheel.
 THRESHOLDS_PATH = Path(__file__).resolve().parent / "config" / "thresholds.yaml"
 
 # Task battery config (de-hardcoded in PR3b). Folded into config_version so the
