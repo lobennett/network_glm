@@ -9,23 +9,8 @@ description = "r01network first- and second-level task-fMRI GLMs (lev1/lev2) + c
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0.3",
-    # Scientific stack PINNED to a set proven to install on Sherlock's CentOS 7
-    # (glibc 2.17) compute nodes, on python 3.11 AND 3.13.
-    #
-    # Re-verified 2026-08-19 at 3.13 on a glibc 2.17 node: numpy, scipy, statsmodels and
-    # matplotlib all resolve to manylinux_2_17 (== glibc 2.17) wheels — scipy's needs at
-    # most glibc symbol 2.14 and links with no unresolved libraries — and pandas 3.0.x,
-    # which publishes no wheel for this platform, source-builds cleanly via meson without
-    # needing OpenBLAS. The one real wall is pillow 12, whose source build wants libjpeg
-    # headers this host lacks; hence pillow<12, which is what matplotlib gets anyway.
-    #
-    # The old <3.12 cap assumed scipy 1.14.1 was the ceiling because it was the newest
-    # with a cp311 manylinux2014 wheel. That reasoning does not carry to cp313, where
-    # newer scipy publishes glibc-2.17 wheels. Dropping the cap lets network_fmri carry
-    # this package as a pinned dependency and run it as a pipeline stage alongside
-    # fw-heudiconv and network_events, instead of only inside the container.
-    #
-    # The container remains the reference environment for publication runs.
+    # Pinned to a set that installs on Sherlock's glibc 2.17 nodes at 3.11 and 3.13.
+    # pillow<12: pillow 12 has no wheel here and its source build needs libjpeg headers.
     "numpy==2.2.6",
     "scipy==1.14.1",
     "pandas==3.0.3",
@@ -35,17 +20,15 @@ dependencies = [
     "matplotlib==3.10.8",
     "pillow<12",
     "seaborn",
+    # lev2's volume path lazy-imports setup_randomise_tfce.
     "randomise-prep @ git+https://github.com/jmumford/randomise-prep.git",
-    "network_qa @ git+https://github.com/lobennett/network_qa.git",
-    "bold-reliability-movies @ git+https://github.com/lobennett/bold_reliability_movies.git",
 ]
 
 [project.scripts]
 network-glm = "network_glm.cli:main"
 
 [tool.hatch.metadata]
-# our companion packages (network_qa, bold-reliability-movies) and randomise-prep
-# are installed via git+ direct references
+# randomise-prep comes from a git+ direct reference.
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]

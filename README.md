@@ -12,104 +12,49 @@ Volumetric, surface, and CIFTI analysis spaces are supported.
 
 ## Environment
 
-The scientific stack is **pinned** and the project targets **Python 3.11**. This is
-not incidental: Sherlock's compute nodes are CentOS 7 (glibc 2.17), where newer
-scipy/pillow releases ship no usable wheel and fall back to source builds that fail.
-`scipy==1.14.1` is the newest release with a working cp311 manylinux2014 wheel.
-
-**On Sherlock, run from the container.** A bare `uv sync` on a compute node cannot
-build scipy.
+The scientific stack is **pinned**, and installs on Sherlock's CentOS 7 (glibc 2.17)
+compute nodes at python 3.11 **and** 3.13: numpy, scipy, statsmodels and matplotlib all
+resolve to `manylinux_2_17` wheels, and pandas source-builds cleanly. `pillow<12` is the
+one real constraint — pillow 12's source build needs libjpeg headers the host lacks.
 
 ```bash
-apptainer exec /home/groups/russpold/singularity_images/network_glm.sif \
-    network-glm --help
+uv sync          # local development
+uv run pytest    # 396 tests
 ```
 
-FSL (`lev2` volume randomise) and FreeSurfer 8.1 (surface smoothing via
-`mri_surf2surf`) are deliberately **not** baked into the image — the sbatch
-templates `module load` them on the host and they resolve through `apptainer exec`.
+There is no container. This package is a library, installed as a dependency of
+[network_fmri](https://github.com/lobennett/network_fmri), which owns Slurm submission for
+every stage of the pipeline. Run the models from there.
 
-For local development and the offline test suite:
+FSL (`lev2` volume randomise) and FreeSurfer 8.1 (surface smoothing via `mri_surf2surf`)
+are external, licensed tools that were never bundled here either. network_fmri
+`module load`s them on the host, and only when a run actually needs them.
+
+## Running the models
+
+Four subcommands, each fitting or plotting one unit in the foreground:
+
+```
+network-glm {lev1|lev2|cohort-outliers|design-plots} ...
+```
+
+**Submission lives in network_fmri**, which fans each level out over a Slurm array, sets
+per-level resources and loads the host modules the level needs:
 
 ```bash
-uv sync          # python 3.11, see .python-version
-uv run pytest    # 314 tests across 53 files
+network_fmri glm-lev1 --cohort discovery --base-tasks --results-dir <out> -- \
+    --bids-dir <bids> --fmriprep-dir <fmriprep> --exclusions-file <lock.json> --residuals
+network_fmri glm-lev2 --lev1-dirs <lev1_out> --all --results-dir <out> -- \
+    --num-permutations 5000
+network_fmri glm-outliers --results-dir <lev1_out> --
 ```
 
----
+Everything after `--` is passed through to the runners below untouched, so this package
+remains the only place that defines what those flags mean.
 
-## Launching the models
+### Direct invocation
 
-`network-glm` dispatches to five subcommands:
-
-```
-network-glm {lev1|lev2|cohort-outliers|design-plots|submit} ...
-```
-
-`submit` is the normal entry point on a cluster — it renders an sbatch template,
-writes a job list, and submits a Slurm array (one array task per subject × task).
-The bare `lev1`/`lev2` commands run a single unit in the foreground and are mostly
-for debugging or interactive work.
-
-> `--partition` is **required** on every `submit` command. Sherlock has no default
-> partition, and jobs submitted without one are rejected.
-
-### First level (`submit lev1`)
-
-One array task per subject × task.
-
-```bash
-network-glm submit lev1 \
-    --subjects s03 s10 s19 \
-    --base-tasks \
-    --bids-dir   /oak/.../bids/discovery \
-    --fmriprep-dir /scratch/.../derivatives/fmriprep_25.2.4 \
-    --results-dir  /scratch/.../lev1_out \
-    --exclusions-file /path/to/discovery_lock.json \
-    --space fsLR \
-    --residuals \
-    --partition russpold
-```
-
-Task selection is one of `--tasks <names...>`, `--all`, `--base-tasks`, or
-`--dual-tasks`. Subjects are bare IDs (`s03`, not `sub-s03`).
-
-Default resources: **1 CPU, 64 GB, 2 days** — override with `--nthreads`,
-`--mem-gb`, `--time`. Use `--print-only` to render the sbatch script without
-submitting it.
-
-### Second level (`submit lev2`)
-
-One array task per contrast.
-
-```bash
-network-glm submit lev2 \
-    --contrasts nBack_twoBack-oneBack \
-    --level1-dirs /scratch/.../lev1_out \
-    --results-dir /scratch/.../lev2_out \
-    --space volume \
-    --num-permutations 5000 \
-    --partition russpold
-```
-
-Contrast selection mirrors lev1: `--contrasts`, `--all`, `--base-tasks`,
-`--dual-tasks`. Default resources: **2 CPUs, 4 GB, 4 hours**.
-
-### Cohort outlier QC (`submit outliers`)
-
-Scans a completed lev1 tree for subjects whose contrast maps or design collinearity
-fall outside cohort norms.
-
-```bash
-network-glm submit outliers \
-    --results-dir /scratch/.../lev1_out \
-    --partition russpold
-```
-
-Defaults: `--n-std 3.0` (SD threshold for outlier voxels), `--vif-threshold 5.0`,
-`--outlier-pct-threshold 10.0`. Resources: **2 CPUs, 16 GB, 1 hour**.
-
-### Single run, no Slurm
+Useful for debugging one unit interactively:
 
 ```bash
 network-glm lev1 \
@@ -118,7 +63,13 @@ network-glm lev1 \
     --space MNI
 ```
 
-Note `--subj-id` takes the **`sub-` prefixed** form here, unlike `submit --subjects`.
+`--subj-id` accepts either `s03` or `sub-s03` for file discovery, but it is interpolated
+**raw** into output filenames — so pass the `sub-` prefixed form or the outputs are not
+BIDS-named. network_fmri always passes the prefixed form.
+
+Task selection for lev1 is `--tasks <names...>`, `--all`, `--base-tasks` or `--dual-tasks`;
+lev2 mirrors it for contrasts, discovering them from the lev1 tree via
+`network_glm.lev2.discover` when not named explicitly.
 
 ### QC figures (`design-plots`)
 
@@ -204,7 +155,7 @@ Fixed-effects maps computed from fewer than `--min-runs` (default 2) runs are ta
 ```
 src/network_glm/
 ├── cli.py               top-level dispatch → lev1 | lev2 | cohort-outliers
-│                        | design-plots | submit
+│                        | design-plots
 ├── lev1/
 │   ├── run.py           CLI entry, argument parsing
 │   ├── prepare.py       setup + input discovery
@@ -226,12 +177,10 @@ src/network_glm/
 │       └── quality_control.py VIFs, design diagnostics
 ├── lev2/
 │   ├── run.py           group-level CLI; volume path via FSL randomise
+│   ├── discover.py      contrast names present in a lev1 tree (used to fan out)
 │   └── surface.py       sign-flip permutation group test on GIFTI surfaces
 ├── cohort/outliers.py   cohort-level outlier QC over lev1 contrast maps
-├── submit/              Slurm array submission
-│   ├── lev1.py / lev2.py / outliers.py
-│   ├── _slurm.py        template rendering, sbatch submission, resource resolution
-│   └── templates/       lev1.sbatch, lev2.sbatch, outliers.sbatch
+├── config/thresholds.yaml  study-level thresholds (package data, see thresholds.py)
 ├── task_config/
 │   ├── battery.yaml     base/dual task lists (canonical order)
 │   ├── tasks/*.yaml     per-task regressors, contrasts, parameters

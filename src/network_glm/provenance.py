@@ -21,6 +21,7 @@ PR4a adds the primitive + tests only; wiring it into lev1/lev2 is a later PR.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 from datetime import UTC, datetime
@@ -50,15 +51,35 @@ def _now_iso() -> str:
     return datetime.now(UTC).strftime(_ISO_FMT)
 
 
+def _installed_commit() -> str | None:
+    """The commit this package was installed from, per PEP 610 ``direct_url.json``.
+
+    Installed as a dependency there is no git repo to query, so this is the only
+    record of the code version.
+    """
+    try:
+        raw = _ilmd.distribution("network_glm").read_text("direct_url.json")
+        if not raw:
+            return None
+        commit = json.loads(raw).get("vcs_info", {}).get("commit_id")
+        return commit[:7] if commit else None
+    except Exception:
+        return None
+
+
 def git_sha() -> str:
-    """Return the current git HEAD short SHA, with a ``+dirty`` suffix if the
-    working tree has uncommitted changes. Returns ``"unknown"`` if git is
-    unavailable or ``_REPO_ROOT`` is not a git repo.
+    """Return the short SHA of the code that is running.
+
+    From a checkout: git HEAD, with a ``+dirty`` suffix if the tree has uncommitted
+    changes. From an installed wheel: the commit recorded by the installer. ``"unknown"``
+    only when neither is available.
 
     The subprocess runs with ``cwd=_REPO_ROOT`` so SLURM jobs launched from
     scratch dirs still resolve the correct repo (git fails when CWD is outside
     any repo, which would otherwise drop ``code_sha`` to a sentinel).
     """
+    if not (_REPO_ROOT / ".git").exists():
+        return _installed_commit() or "unknown"
     try:
         sha = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
