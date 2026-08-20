@@ -55,11 +55,7 @@ from network_glm.lev1.processing.surface_data import (
     resolve_freesurfer_subject,
     smooth_surface_gifti,
 )
-from network_glm.lev1.spaces import (
-    is_cifti_space,
-    is_surface_space,
-    resolve_surface_space,
-)
+from network_glm.lev1.spaces import is_cifti_space, is_surface_space, resolve_surface_space
 from network_glm.task_config.loader import get_task_contrasts
 
 logger = logging.getLogger(__name__)
@@ -89,7 +85,7 @@ def process_volumetric_run(
     """
     validation = validate_glm_inputs(bold_data, design_matrix, run_files[mask_key])
     if not validation["is_valid"]:
-        raise ValueError(f"GLM validation failed: {validation['errors']}")
+        raise ValueError(f'GLM validation failed: {validation["errors"]}')
 
     run_mask = run_files[mask_key]
 
@@ -126,9 +122,7 @@ def process_volumetric_run(
             fc_confounds=fc_confounds,
         )
         if not residuals_result["success"]:
-            logger.warning(
-                "Residuals processing had issues: %s", residuals_result["errors"]
-            )
+            logger.warning("Residuals processing had issues: %s", residuals_result["errors"])
 
     return contrast_results
 
@@ -171,9 +165,7 @@ def process_surface_run(
     if args.smoothing_fwhm is not None:
         subjects_dir = find_freesurfer_subjects_dir(Path(args.fmriprep_dir))
         if subjects_dir is None:
-            raise FileNotFoundError(
-                "Cannot find FreeSurfer subjects dir for surface smoothing"
-            )
+            raise FileNotFoundError("Cannot find FreeSurfer subjects dir for surface smoothing")
         if surface_space in ("fsaverage", "fsaverage6"):
             fs_subject = "fsaverage6"
         else:
@@ -206,14 +198,10 @@ def process_surface_run(
         # mis-shaped designs through nilearn run_glm into garbage contrast maps.
         # We validate once per hemisphere because each hemisphere produces its own
         # surface_data and the row-count check needs that array's first dim.
-        validation = validate_design_matrix(
-            design_matrix, n_scans=surface_data.shape[0]
-        )
+        validation = validate_design_matrix(design_matrix, n_scans=surface_data.shape[0])
         if not validation["is_valid"]:
             raise ValueError(
-                f"Surface GLM validation failed (hemi-{hemisphere}): "
-                f"{validation['errors']}"
-            )
+                f'Surface GLM validation failed (hemi-{hemisphere}): ' f'{validation["errors"]}'
 
         surface_glm = SurfaceGLM(t_r=tr)
         surface_glm.fit(surface_data, design_matrix)
@@ -231,24 +219,20 @@ def process_surface_run(
             contrasts=contrasts,
             hemisphere=hemisphere,
         )
-        logger.info(
-            "Saved %d contrasts for hemisphere %s", len(contrast_results), hemisphere
-        )
+        logger.info("Saved %d contrasts for hemisphere %s", len(contrast_results), hemisphere)
 
         # Generate QC plots (skipped under --skip-qc-plots; matplotlib renders
         # are slow at cohort scale — ~10 plots × 2 hemis × N runs adds many
         # hours of wall time per subject. The .func.gii files are persisted
         # above and can be re-plotted offline if review is needed.)
         if getattr(args, "skip_qc_plots", False):
-            logger.debug(
-                "Skipping QC plots for hemisphere %s (--skip-qc-plots)", hemisphere
-            )
+            logger.debug("Skipping QC plots for hemisphere %s (--skip-qc-plots)", hemisphere)
             continue
         qc_count = 0
         for contrast_name, paths in contrast_results.items():
             try:
                 qc_filename = (
-                    f"{base_filename}_hemi-{hemisphere}_contrast-{contrast_name}_qc.png"
+                    f"{base_filename}_hemi-{hemisphere}" f"_contrast-{contrast_name}_qc.png"
                 )
                 qc_path = dirs["quality_control"] / qc_filename
                 title = f"{args.subj_id} - {contrast_name} (hemi-{hemisphere})"
@@ -282,9 +266,7 @@ def process_surface_run(
     return all_hemisphere_results
 
 
-def process_cifti_run(
-    run_files, design_matrix, args, dirs, base_filename, tr, fc_confounds=None
-):
+def process_cifti_run(run_files, design_matrix, args, dirs, base_filename, tr, fc_confounds=None):
     """Fit a GLM over fsLR den-91k grayordinates and write residuals as a dtseries."""
     if not getattr(args, "residuals", False):
         raise ValueError("--space fsLR is residuals-only; pass --residuals.")
@@ -297,14 +279,8 @@ def process_cifti_run(
     lp = None if no_filter else 0.1
     hp = None if no_filter else 0.01
     return process_cifti_residuals(
-        glm,
-        template,
-        dirs["task_residuals"],
-        base_filename,
-        tr,
-        low_pass=lp,
-        high_pass=hp,
-        fc_confounds=fc_confounds,
+        glm, template, dirs["task_residuals"], base_filename, tr,
+        low_pass=lp, high_pass=hp, fc_confounds=fc_confounds,
     )
 
 
@@ -313,9 +289,7 @@ def _run_base_filename(subj_id, session, task_name, run):
     return f"{subj_id}_{session}_task-{task_name}_{run}"
 
 
-def process_single_run(
-    session, run, run_files, args, sample_type, dirs, task_params, exclusions
-):
+def process_single_run(session, run, run_files, args, sample_type, dirs, task_params, exclusions):
     """Process a single run (volumetric or surface).
 
     Returns:
@@ -348,10 +322,7 @@ def process_single_run(
                 logger.info("Skipping %s (outputs already exist)", run_key)
                 return True
         elif not is_surface_space(args.space) and args.residuals:
-            vol_res = (
-                dirs["task_residuals"]
-                / f"{base_filename}_task-regressed-residuals.nii.gz"
-            )
+            vol_res = dirs["task_residuals"] / f"{base_filename}_task-regressed-residuals.nii.gz"
             if vol_res.exists():
                 logger.info("Skipping %s (outputs already exist)", run_key)
                 return True
@@ -377,21 +348,15 @@ def process_single_run(
         if mask_key not in run_files or data_key not in run_files:
             raise ValueError(f"Missing required files for {session}/{run}")
         # BOLD is already trimmed by trim_bold.py; load without further removal
-        bold_data = load_bold_data_with_dummy_removal(
-            run_files[data_key], dummy_scans=0
-        )
+        bold_data = load_bold_data_with_dummy_removal(run_files[data_key], dummy_scans=0)
         n_scans = bold_data.shape[3]
 
     # Load and preprocess events
     # Onsets are already adjusted for dummy scans during event file creation
     # (shifted by -7*1.49s = -10.43s); do not adjust again
     events_df = pd.read_csv(run_files["events"], sep="\t")
-    processed_events = preprocess_events(
-        events_df, args.task_name, n_scans=n_scans, tr=tr
-    )
-    processed_events_with_junk, percent_junk = add_junk_trials(
-        processed_events, args.task_name
-    )
+    processed_events = preprocess_events(events_df, args.task_name, n_scans=n_scans, tr=tr)
+    processed_events_with_junk, percent_junk = add_junk_trials(processed_events, args.task_name)
 
     task_name_norm = (args.task_name or "").strip().lower()
     #Scope note: task-name gating for the stop_fail_violation regressor 
@@ -403,16 +368,11 @@ def process_single_run(
     # is run with --dummy-scans 0, so the confounds TSV already matches the
     # trimmed BOLD length. Do not trim confounds further.
     selected_confounds = load_and_process_confounds(
-        run_files["confounds"],
-        args.task_name,
-        sample_type,
-        dummy_scans=0,
+        run_files["confounds"], args.task_name, sample_type, dummy_scans=0,
         confounds_mode=getattr(args, "confounds_mode", "full"),
     )
     if len(selected_confounds) != n_scans:
-        raise ValueError(
-            f"Confounds length mismatch: {len(selected_confounds)} != {n_scans}"
-        )
+        raise ValueError(f"Confounds length mismatch: {len(selected_confounds)} != {n_scans}")
 
     # Create design matrix
     design_matrix, regressor_3cols = create_design_matrix(
@@ -464,9 +424,7 @@ def process_single_run(
     # in either space (previously volumetric silently ignored the flag).
     fc_confounds = None
     if args.residuals and args.fc_confounds:
-        confounds_df = pd.read_csv(
-            run_files["confounds"], sep="\t", na_values=["n/a"]
-        ).fillna(0)
+        confounds_df = pd.read_csv(run_files["confounds"], sep="\t", na_values=["n/a"]).fillna(0)
         fc_confounds_df = get_fc_confounds(confounds_df)
         if not fc_confounds_df.empty:
             # BOLD is pre-trimmed and fMRIPrep runs with --dummy-scans 0,
@@ -572,9 +530,7 @@ def compute_fixed_effects_all(
                     surface_space=surface_space,
                     contrast_exclusions=contrast_exclusions,
                 )
-                logger.info(
-                    "Fixed effects: %d contrasts (hemi-%s)", len(results), hemisphere
-                )
+                logger.info("Fixed effects: %d contrasts (hemi-%s)", len(results), hemisphere)
         else:
             results = compute_subject_fixed_effects(
                 args.subj_id,
