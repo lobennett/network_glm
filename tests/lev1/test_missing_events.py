@@ -56,8 +56,8 @@ def _make_run_files(
         f"{base}_desc-confounds_timeseries.tsv",
         f"{base}_space-T1w_desc-preproc_bold.nii.gz",
         f"{base}_space-T1w_desc-brain_mask.nii.gz",
-        f"{base}_space-MNI152NLin6Asym_res-2_desc-preproc_bold.nii.gz",
-        f"{base}_space-MNI152NLin6Asym_res-2_desc-brain_mask.nii.gz",
+        f"{base}_space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz",
+        f"{base}_space-MNI152NLin2009cAsym_res-2_desc-brain_mask.nii.gz",
     ]
     for fname in fmriprep_files:
         (fmriprep_func / fname).write_text("mock")

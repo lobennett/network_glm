@@ -52,8 +52,8 @@ def _make_full_run(
         "desc-confounds_timeseries.tsv",
         "space-T1w_desc-preproc_bold.nii.gz",
         "space-T1w_desc-brain_mask.nii.gz",
-        "space-MNI152NLin6Asym_res-2_desc-preproc_bold.nii.gz",
-        "space-MNI152NLin6Asym_res-2_desc-brain_mask.nii.gz",
+        "space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz",
+        "space-MNI152NLin2009cAsym_res-2_desc-brain_mask.nii.gz",
     ):
         (fp_func / f"{base}_{suffix}").write_text("mock")
 
