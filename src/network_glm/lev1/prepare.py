@@ -69,7 +69,7 @@ def discover_and_validate_files(config, args):
     finder = FileFinder(
         config.bids_dir,
         config.fmriprep_dir,
-        mni_template=getattr(args, "mni_template", "MNI152NLin6Asym"),
+        mni_template=getattr(args, "mni_template", "MNI152NLin2009cAsym"),
         mni_res=getattr(args, "mni_res", "2"),
     )
     required_files = FileFinder.get_required_files_for_space(args.space)

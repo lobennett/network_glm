@@ -143,8 +143,9 @@ def get_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--mni-template",
-        default="MNI152NLin6Asym",
-        help="fMRIPrep MNI template name for --space MNI " "(default: MNI152NLin6Asym)",
+        default="MNI152NLin2009cAsym",
+        help="fMRIPrep MNI template name for --space MNI "
+        "(default: MNI152NLin2009cAsym, the study's fMRIPrep output space)",
     )
     parser.add_argument(
         "--mni-res",

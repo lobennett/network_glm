@@ -14,7 +14,7 @@ class FileFinder:
         self,
         bids_dir: Path,
         fmriprep_dir: Path,
-        mni_template: str = "MNI152NLin6Asym",
+        mni_template: str = "MNI152NLin2009cAsym",
         mni_res: str = "2",
     ):
         """Initialize file finder.
@@ -23,9 +23,9 @@ class FileFinder:
             bids_dir: Path to BIDS dataset directory
             fmriprep_dir: Path to fMRIPrep derivatives directory
             mni_template: fMRIPrep MNI template name to look for in derivative
-                filenames (e.g., 'MNI152NLin2009cAsym', 'MNI152NLin6Asym').
-                Defaults to 'MNI152NLin6Asym' to match this project's
-                fmriprep production output for the 2mm MNI variant.
+                filenames. Defaults to 'MNI152NLin2009cAsym', the study's requested
+                MNI space. MNI152NLin6Asym is also produced, but only because
+                --cifti-output pulls it in for the fsLR path.
             mni_res: Resolution suffix for the MNI BOLD/mask files
                 (e.g., '1', '2'). Defaults to '2'.
         """
