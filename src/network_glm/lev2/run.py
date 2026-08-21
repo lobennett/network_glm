@@ -188,6 +188,26 @@ def _read_input_provenance(input_files: list[str]) -> dict:
     }
 
 
+def _inject_seed(script_path: Path, seed: int) -> bool:
+    """Add ``--seed`` to the ``randomise`` call in a generated script.
+
+    randomise-prep writes a plain shell script, so pinning the RNG does not need upstream
+    support. Returns False if there is nothing to patch, which the caller treats as fatal:
+    an unseeded run produces different p-values every time.
+    """
+    try:
+        text = script_path.read_text()
+    except OSError:
+        return False
+    if "--seed" in text:
+        return True
+    if "randomise \\\n" not in text:
+        return False
+    script_path.write_text(text.replace("randomise \\\n",
+                                        f"randomise \\\n  --seed {seed} \\\n", 1))
+    return True
+
+
 def run_level2_analysis(
     contrast_name: str,
     input_files: list[str],
@@ -238,20 +258,23 @@ def run_level2_analysis(
         analysis_type="onesample_2sided",
         num_perm=num_permutations,
     )
-    # Forward the seed only if the installed setup_randomise_tfce supports it
-    # (explicit `seed` param, or **kwargs). Safe no-op on versions that don't.
+    # Forward the seed if the installed setup_randomise_tfce takes one; otherwise inject
+    # it into the generated script. Unpinned permutations would make p-values differ
+    # between identical runs, so this must not silently no-op.
     import inspect
 
     _sig = inspect.signature(setup_randomise_tfce)
-    if "seed" in _sig.parameters or any(p.kind == p.VAR_KEYWORD for p in _sig.parameters.values()):
+    _takes_seed = "seed" in _sig.parameters or any(
+        p.kind == p.VAR_KEYWORD for p in _sig.parameters.values())
+    if _takes_seed:
         randomise_kwargs["seed"] = seed
-    else:
-        print(
-            "WARNING: installed randomise-prep has no seed parameter; FSL "
-            "randomise permutation RNG is not pinned for this run.",
-            file=sys.stderr,
-        )
     script_path = setup_randomise_tfce(**randomise_kwargs)
+    if not _takes_seed and not _inject_seed(Path(script_path), seed):
+        raise RuntimeError(
+            f"could not pin randomise's RNG: no `seed` parameter in the installed "
+            f"randomise-prep and no `randomise` call found in {script_path}. "
+            f"Permutation p-values would not be reproducible."
+        )
 
     print("Running FSL randomise...")
     try:
