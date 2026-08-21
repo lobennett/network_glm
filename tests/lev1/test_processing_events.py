@@ -65,10 +65,8 @@ prev_test_trial"""
         # raw amp: [0.3, 0.1, 0.5] -> mean 0.3 -> centered [0.0, -0.2, 0.2]
         df = pd.DataFrame(
             {
-                "trial_id": ["test_trial", "test_trial", "test_trial", 
-"test_trial", "test_trial", "test_trial"],
-                "trial_type": ["go", "stop_failure", "go", "stop_failure", 
-"go", "stop_failure"],
+                "trial_id": ["test_trial", "test_trial", "test_trial", "test_trial", "test_trial", "test_trial"],
+                "trial_type": ["go", "stop_failure", "go", "stop_failure", "go", "stop_failure"],
                 "key_press": [1, 2, 2, 1, 2, 1],
                 "correct_response": [1, -1, 2, -1, 2, -1],
                 "response_time": [0.2, 0.5, 0.4, 0.5, 0.6, 1.1]
@@ -331,8 +329,7 @@ class TestPreprocessEvents:
                     30.0,
                     40.0,
                     50.0,
-                ],  # Use larger onsets to avoid negative after dummy 
-adjustment
+                ],  # Use larger onsets to avoid negative after dummy adjustment
                 "response_time": [0.5, -1.0, 0.7, -999],
                 "trial_id": ["test_trial"] * 4,
                 "trial_type": [
@@ -409,10 +406,8 @@ class TestDefineNuisanceTrials:
         nuisance_masks = define_nuisance_trials(events_data, "stopSignal")
 
         # For stop-signal, trial_mask should be 'go' trials only
-        assert nuisance_masks["omission"].sum() == 0  # No omissions in go 
-trials
-        assert nuisance_masks["commission"].iloc[3]  # Wrong response in go 
-trial
+        assert nuisance_masks["omission"].sum() == 0  # No omissions in go trials
+        assert nuisance_masks["commission"].iloc[3]  # Wrong response in go trial
         assert nuisance_masks["rt_too_fast"].iloc[1]  # Fast RT in go trial
 
 
