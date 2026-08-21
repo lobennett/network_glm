@@ -85,6 +85,6 @@ contrasts:
   stop_failure-go: "stop_failure - go"
   stop_success-stop_failure: "stop_success - stop_failure"
   stop_failure-stop_success: "stop_failure - stop_success"
-  stop_failure_violation: "stop_failure_violation"
+  stop_fail_violation: "stop_fail_violation"
   task-baseline: "1/3 * go + 1/3 * stop_failure + 1/3 * stop_success"
   response_time: "response_time"
