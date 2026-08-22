@@ -201,7 +201,7 @@ def process_surface_run(
         validation = validate_design_matrix(design_matrix, n_scans=surface_data.shape[0])
         if not validation["is_valid"]:
             raise ValueError(
-                f'Surface GLM validation failed (hemi-{hemisphere}): ' f'{validation["errors"]}'
+                f'Surface GLM validation failed (hemi-{hemisphere}): ' f'{validation["errors"]}')
 
         surface_glm = SurfaceGLM(t_r=tr)
         surface_glm.fit(surface_data, design_matrix)
