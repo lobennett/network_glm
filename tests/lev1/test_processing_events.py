@@ -49,16 +49,16 @@ produced"""
 prev_test_trial"""
         df = pd.DataFrame(
             {
-                "trial_id": ["test_trial", "test_fixation", "test_trial"],
-                "trial_type": ["go", "n/a", "stop_failure"],
-                "key_press": [1, "n/a", 2],
-                "correct_response": [1, "n/a", -1],
-                "response_time": [0.4, np.nan, 0.6]
+                "trial_id": ["test_trial", "test_fixation", "test_trial", "test_trial", "test_trial"],
+                "trial_type": ["go", "n/a", "stop_failure", "go", "stop_failure"],
+                "key_press": [1, "n/a", 2, 1, 2],
+                "correct_response": [1, "n/a", -1, 1, -1],
+                "response_time": [0.4, np.nan, 0.6, 0.4, 0.5],
             }
         )
         output = stop_fail_violation(df)
         val = pd.to_numeric(output["stop_failure_violation"], errors="coerce")
-        assert val.notna().sum() == 1
+        assert val.notna().sum() == 2
 
     def test_centering_and_sum_to_zero(self):
         """Multiple violations are mean-centered and sum to zero"""
@@ -94,7 +94,7 @@ prev_test_trial"""
     def test_go_rejected_for_incorrect_accuracy(self):
         """A preceding go trial with key_press != correct_response should be rejected"""
         df = pd.DataFrame({
-            "trial_id": ["test_trial", "test_trial"],
+            "trial_id": ["test_trial", "test_trial", "test_trial", "test_trial"],
             "trial_type": ["go", "stop_failure", "go", "stop_failure"],
             "key_press": [1, 1, 1, 2],
             "correct_response": [2, -1, 2, -1],
@@ -133,11 +133,11 @@ prev_test_trial"""
     def test_two_consecutive_stop_failures(self):
         """Two consecutive stop_failure trials: the second stop_failure trial should stay NaN"""
         df = pd.DataFrame({
-            "trial_id": ["test_trial", "test_trial", "test_trial"],
-            "trial_type": ["go", "stop_failure", "stop_failure"],
-            "key_press": [1, 1, 2],
-            "correct_response": [1, -1, -1],
-            "response_time": [0.3, 0.8, 0.4],
+            "trial_id": ["test_trial", "test_trial", "test_trial", "test_trial", "test_trial"],
+            "trial_type": ["go", "stop_failure", "stop_failure", "go", "stop_failure"],
+            "key_press": [1, 1, 2, 1, 2],
+            "correct_response": [1, -1, -1, 1, -1],
+            "response_time": [0.3, 0.8, 0.4, 0.4, 0.6],
         })
         output = stop_fail_violation(df)
         val = pd.to_numeric(output["stop_failure_violation"], errors="coerce")
