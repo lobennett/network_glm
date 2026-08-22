@@ -30,6 +30,7 @@ from network_glm.lev1.processing.events import (
     load_bold_data_with_dummy_removal,
     preprocess_events,
     save_simplified_events,
+    stop_fail_violation,
 )
 from network_glm.lev1.processing.fixed_effects import compute_subject_fixed_effects
 from network_glm.lev1.processing.glm import (
@@ -201,8 +202,7 @@ def process_surface_run(
         validation = validate_design_matrix(design_matrix, n_scans=surface_data.shape[0])
         if not validation["is_valid"]:
             raise ValueError(
-                f'Surface GLM validation failed (hemi-{hemisphere}): ' f'{validation["errors"]}'
-            )
+                f'Surface GLM validation failed (hemi-{hemisphere}): ' f'{validation["errors"]}')
 
         surface_glm = SurfaceGLM(t_r=tr)
         surface_glm.fit(surface_data, design_matrix)
@@ -366,6 +366,12 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     events_df = pd.read_csv(run_files["events"], sep="\t")
     processed_events = preprocess_events(events_df, args.task_name, n_scans=n_scans, tr=tr)
     processed_events_with_junk, percent_junk = add_junk_trials(processed_events, args.task_name)
+
+    task_name_norm = (args.task_name or "").strip().lower()
+    #Scope note: task-name gating for the stop_fail_violation regressor 
+    #does not extend to the dual tasks
+    if task_name_norm in ("stopsignal", "stop_signal"):
+        processed_events_with_junk = stop_fail_violation(processed_events_with_junk)
 
     # Load confounds. BOLD is pre-trimmed by scripts/trim_bold.py and fMRIPrep
     # is run with --dummy-scans 0, so the confounds TSV already matches the
