@@ -1,19 +1,55 @@
 """Fixed effects analysis for combining results across runs."""
 
+import json
 import logging
 import re
 from pathlib import Path
 from typing import Any
 
+import nibabel as nib
+import numpy as np
 from nilearn.glm.contrasts import compute_fixed_effects
 
 from network_glm.lev1.processing.imaging import cast_nifti_to_float32
 from network_glm.lev1.processing.surface_data import (
+    SurfaceResult,
     compute_surface_fixed_effects,
+    load_surface_stat_map,
 )
 from network_glm.task_config.loader import get_task_contrasts
 
 logger = logging.getLogger(__name__)
+
+
+def compute_mean_run_z(z_files: list[Path], is_surface: bool = False) -> Any:
+    """Return the arithmetic, voxel/vertex-wise NaN-safe mean of run Z maps.
+
+    A location that is NaN in some runs uses the remaining values. A location
+    that is NaN in every run remains NaN, rather than being converted to zero.
+    """
+    if not z_files:
+        raise ValueError("At least one per-run Z map is required")
+
+    if is_surface:
+        arrays = [np.asarray(load_surface_stat_map(path), dtype=np.float64) for path in z_files]
+        template = None
+    else:
+        images = [nib.load(str(path)) for path in z_files]
+        arrays = [np.asarray(image.get_fdata(), dtype=np.float64) for image in images]
+        template = images[0]
+
+    stack = np.stack(arrays, axis=0)
+    valid_counts = np.sum(~np.isnan(stack), axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = np.nansum(stack, axis=0) / valid_counts
+    mean = np.where(valid_counts > 0, mean, np.nan).astype(np.float32)
+
+    if is_surface:
+        return SurfaceResult(mean)
+
+    header = template.header.copy()
+    header.set_data_dtype(np.float32)
+    return nib.Nifti1Image(mean, template.affine, header)
 
 
 class FixedEffectsAnalyzer:
@@ -27,6 +63,8 @@ class FixedEffectsAnalyzer:
         min_runs: int = 2,
         hemisphere: str | None = None,
         surface_space: str = "fsnative",
+        analysis_space: str | None = None,
+        smoothing_fwhm: float | None = None,
     ):
         """Initialize fixed effects analyzer.
 
@@ -37,6 +75,8 @@ class FixedEffectsAnalyzer:
             min_runs: Minimum runs required to compute a non-tagged fixed-effects map (default: 2).
             hemisphere: Optional hemisphere ('L' or 'R') for surface data
             surface_space: Surface space name for output filenames (default 'fsnative')
+            analysis_space: Analysis space recorded in contrast metadata
+            smoothing_fwhm: Smoothing FWHM in millimeters, or None for no smoothing
 
         Examples:
             >>> analyzer = FixedEffectsAnalyzer('sub-01', 'stopSignal')
@@ -48,6 +88,10 @@ class FixedEffectsAnalyzer:
         self.min_runs = min_runs
         self.hemisphere = hemisphere
         self.surface_space = surface_space
+        self.analysis_space = analysis_space or (
+            surface_space if hemisphere is not None else "volume"
+        )
+        self.smoothing_fwhm = smoothing_fwhm
         self.contrast_results = {}
 
     def find_contrast_files(
@@ -83,7 +127,8 @@ class FixedEffectsAnalyzer:
         # Determine file extension based on hemisphere (surface vs volumetric)
         if self.hemisphere is not None:
             file_ext = ".func.gii"
-            # Pattern for surface files: match hemi-L_ or hemi-R_ followed by contrast
+            # The wildcard after hemi-H_ accepts current names with a space
+            # entity and legacy names without one.
             effect_pattern = (
                 f"*hemi-{self.hemisphere}_*contrast-{contrast_name}*stat-effect-size{file_ext}"
             )
@@ -289,8 +334,64 @@ class FixedEffectsAnalyzer:
             f"_stat-fixed-effects"
         )
 
+    def _metadata(
+        self,
+        contrast_name: str,
+        contrast_formula: str,
+        exclusions: set[str],
+        contrast_exclusions: set[tuple[str, str]],
+    ) -> dict[str, Any]:
+        """Build the JSON-safe audit record for one fixed-effects contrast."""
+        results = self.contrast_results[contrast_name]
+        effect_files = [Path(path) for path in results["input_files"]["effects"]]
+        variance_files = [Path(path) for path in results["input_files"]["variances"]]
+        z_files = [
+            path.with_name(path.name.replace("stat-effect-size", "stat-z_score"))
+            for path in effect_files
+        ]
+        included_runs = [self._parse_exclusion_key(path) for path in effect_files]
+        relevant_prefix = f"{self.subject_id}_"
+        relevant_task = f"_task-{self.task_name}_"
+        scan_exclusions = sorted(
+            key for key in exclusions if key.startswith(relevant_prefix) and relevant_task in key
+        )
+        per_contrast_exclusions = sorted(
+            key
+            for key, excluded_contrast in contrast_exclusions
+            if excluded_contrast == contrast_name
+            and key.startswith(relevant_prefix)
+            and relevant_task in key
+        )
+        return {
+            "ContrastName": contrast_name,
+            "ContrastFormula": contrast_formula,
+            "AnalysisSpace": self.analysis_space,
+            "SmoothingFWHM": self.smoothing_fwhm,
+            "AggregationMethod": "unweighted fixed effects across runs",
+            "MeanRunZAggregationMethod": (
+                "arithmetic mean across contributing per-run Z maps, ignoring NaN values"
+            ),
+            "NumberOfIncludedRuns": len(included_runs),
+            "IncludedRuns": included_runs,
+            "ContributingFiles": {
+                "EffectSize": [str(path) for path in effect_files],
+                "Variance": [str(path) for path in variance_files],
+                "ZScore": [str(path) for path in z_files],
+            },
+            "Exclusions": {
+                "ScanLevel": scan_exclusions,
+                "ContrastLevel": per_contrast_exclusions,
+            },
+        }
+
     def save_fixed_effects_maps(
-        self, contrast_name: str, output_dir: Path, base_filename: str | None = None
+        self,
+        contrast_name: str,
+        output_dir: Path,
+        base_filename: str | None = None,
+        contrast_formula: str = "",
+        exclusions: set[str] | None = None,
+        contrast_exclusions: set[tuple[str, str]] | None = None,
     ) -> dict[str, Path]:
         """Save fixed effects maps for a contrast.
 
@@ -361,6 +462,32 @@ class FixedEffectsAnalyzer:
             )
             saved_files["fixed_stat"] = stat_path
 
+        z_files = [
+            Path(path).with_name(Path(path).name.replace("stat-effect-size", "stat-z_score"))
+            for path in results["input_files"]["effects"]
+        ]
+        missing_z = [path for path in z_files if not path.is_file()]
+        if missing_z:
+            raise FileNotFoundError(
+                "Cannot compute meanRunZ; missing contributing per-run Z map(s): "
+                + ", ".join(str(path) for path in missing_z)
+            )
+        mean_run_z = compute_mean_run_z(z_files, is_surface=is_surface)
+        mean_base = base_filename.replace("_stat-fixed-effects", "_stat-meanRunZ")
+        mean_path = output_dir / f"{mean_base}{file_ext}"
+        cast_nifti_to_float32(mean_run_z, is_surface=is_surface).to_filename(mean_path)
+        saved_files["mean_run_z"] = mean_path
+
+        metadata = self._metadata(
+            contrast_name,
+            contrast_formula,
+            exclusions or set(),
+            contrast_exclusions or set(),
+        )
+        metadata_path = output_dir / f"{base_filename}.json"
+        metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+        saved_files["metadata"] = metadata_path
+
         return saved_files
 
     def compute_all_task_fixed_effects(
@@ -391,8 +518,10 @@ class FixedEffectsAnalyzer:
             contrasts = get_task_contrasts(self.task_name)
 
         all_saved_files = {}
+        exclusions = exclusions or set()
+        contrast_exclusions = contrast_exclusions or set()
 
-        for contrast_name in contrasts.keys():
+        for contrast_name, contrast_formula in contrasts.items():
             # Find files for this contrast
             effect_files, variance_files = self.find_contrast_files(
                 contrast_dir, contrast_name, exclusions, contrast_exclusions
@@ -406,7 +535,13 @@ class FixedEffectsAnalyzer:
 
                 if fixed_effect is not None:
                     # Save results
-                    saved_files = self.save_fixed_effects_maps(contrast_name, output_dir)
+                    saved_files = self.save_fixed_effects_maps(
+                        contrast_name,
+                        output_dir,
+                        contrast_formula=contrast_formula,
+                        exclusions=exclusions,
+                        contrast_exclusions=contrast_exclusions,
+                    )
                     all_saved_files[contrast_name] = saved_files
 
         # Surface silent-loss: contrasts whose per-run files never got written
@@ -472,6 +607,8 @@ def compute_subject_fixed_effects(
     hemisphere: str | None = None,
     surface_space: str = "fsnative",
     contrast_exclusions: set[tuple[str, str]] | None = None,
+    analysis_space: str | None = None,
+    smoothing_fwhm: float | None = None,
 ) -> dict[str, dict[str, Path]]:
     """Compute fixed effects for all contrasts for a subject.
 
@@ -485,6 +622,8 @@ def compute_subject_fixed_effects(
         min_runs: Minimum runs threshold passed to the analyzer (default 2).
         hemisphere: Optional hemisphere ('L' or 'R') for surface data
         surface_space: Surface space name for output filenames (default 'fsnative')
+        analysis_space: Analysis space recorded in contrast metadata
+        smoothing_fwhm: Smoothing FWHM in millimeters, or None for no smoothing
 
     Returns:
         Dictionary mapping contrast names to saved file paths
@@ -505,6 +644,8 @@ def compute_subject_fixed_effects(
         min_runs=min_runs,
         hemisphere=hemisphere,
         surface_space=surface_space,
+        analysis_space=analysis_space,
+        smoothing_fwhm=smoothing_fwhm,
     )
 
     return analyzer.compute_all_task_fixed_effects(

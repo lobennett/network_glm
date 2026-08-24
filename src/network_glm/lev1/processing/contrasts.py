@@ -85,6 +85,7 @@ def compute_run_contrasts(
     base_filename: str,
     contrasts: dict[str, str] | None = None,
     hemisphere: str | None = None,
+    surface_space: str | None = None,
 ) -> dict[str, dict[str, Path]]:
     """Compute and save all contrasts for a run.
 
@@ -95,6 +96,7 @@ def compute_run_contrasts(
         base_filename: Base filename for output files
         contrasts: Optional custom contrast dictionary
         hemisphere: Optional hemisphere indicator ('L' or 'R') for surface data
+        surface_space: Surface space entity for GIFTI outputs. Defaults to fsnative.
 
     Returns:
         Dictionary mapping contrast names to saved file paths
@@ -125,13 +127,18 @@ def compute_run_contrasts(
                 # Surface data - use GIFTI format
                 file_ext = ".func.gii"
                 hemi_part = f"_hemi-{hemisphere}"
+                space_part = f"_space-{surface_space or 'fsnative'}"
             else:
                 # Volumetric data - use NIfTI format
                 file_ext = ".nii.gz"
                 hemi_part = ""
+                space_part = ""
 
             # Create filenames
-            contrast_base = f"{base_filename}{hemi_part}_contrast-{contrast_name}_rtmodel-RTDur"
+            contrast_base = (
+                f"{base_filename}{hemi_part}{space_part}"
+                f"_contrast-{contrast_name}_rtmodel-RTDur"
+            )
 
             saved_files = {}
             # Save contrast outputs as float32. nilearn's compute_contrast returns

@@ -219,6 +219,7 @@ def process_surface_run(
             base_filename,
             contrasts=contrasts,
             hemisphere=hemisphere,
+            surface_space=surface_space,
         )
         logger.info("Saved %d contrasts for hemisphere %s", len(contrast_results), hemisphere)
 
@@ -533,6 +534,8 @@ def compute_fixed_effects_all(
                     hemisphere=hemisphere,
                     surface_space=surface_space,
                     contrast_exclusions=contrast_exclusions,
+                    analysis_space=surface_space,
+                    smoothing_fwhm=args.smoothing_fwhm,
                 )
                 logger.info("Fixed effects: %d contrasts (hemi-%s)", len(results), hemisphere)
         else:
@@ -545,6 +548,8 @@ def compute_fixed_effects_all(
                 exclusions,
                 min_runs=args.min_runs,
                 contrast_exclusions=contrast_exclusions,
+                analysis_space=args.space,
+                smoothing_fwhm=args.smoothing_fwhm,
             )
             logger.info("Fixed effects: %d contrasts", len(results))
     except Exception as e:

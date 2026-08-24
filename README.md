@@ -139,6 +139,20 @@ depends on it. Do not reorder without a behavior-preserving audit.
 Fixed-effects maps computed from fewer than `--min-runs` (default 2) runs are tagged
 `_desc-belowMinRuns` and filtered out by `lev2` rather than silently dropped.
 
+Per-run surface contrast maps include their mesh as `_space-fsnative` or
+`_space-fsaverage6`. The fixed-effects directory contains the conventional across-run
+effect, variance, and fixed-effects Z maps, plus a `_stat-meanRunZ` map for every
+contrast. `meanRunZ` is the voxel/vertex-wise arithmetic mean of the contributing
+per-run Z maps (ignoring NaNs, and preserving NaN where every run is NaN), as needed
+to reproduce the Figure 8c aggregation in Ladwig et al. It is not the conventional
+fixed-effects Z map: the latter combines effects and variances before converting the
+result to Z.
+
+Each fixed-effects contrast also has a `_stat-fixed-effects.json` sidecar recording
+the contrast formula, analysis space, smoothing FWHM, aggregation methods, included
+run count and identities, contributing effect/variance/Z files, and applicable
+scan-level or contrast-level exclusions.
+
 ---
 
 ## Codebase overview
