@@ -46,6 +46,21 @@ def test_find_contrast_files_no_contrast_exclusions_keeps_all(tmp_path):
     assert len(eff) == 2 and len(var) == 2
 
 
+
+
+def test_find_contrast_files_does_not_match_contrast_prefixes(tmp_path):
+    from network_glm.lev1.processing.fixed_effects import FixedEffectsAnalyzer
+
+    cdir = tmp_path / "contrasts"
+    cdir.mkdir()
+    _touch_contrast_run(cdir, "sub-s03", "ses-01", "goNogo", "1", "nogo_success")
+    _touch_contrast_run(cdir, "sub-s03", "ses-01", "goNogo", "1", "nogo_success-go")
+    analyzer = FixedEffectsAnalyzer("sub-s03", "goNogo")
+
+    effect_files, variance_files = analyzer.find_contrast_files(cdir, "nogo_success")
+
+    assert len(effect_files) == len(variance_files) == 1
+    assert "contrast-nogo_success_rtmodel" in effect_files[0].name
 def test_load_contrast_exclusions_parses_only_exclude_contrast(tmp_path):
     """load_contrast_exclusions returns (scan_key, contrast) for exclude-contrast
     entries and ignores scan-level exclude/trim entries."""

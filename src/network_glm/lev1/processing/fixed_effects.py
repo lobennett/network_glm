@@ -130,16 +130,16 @@ class FixedEffectsAnalyzer:
             # The wildcard after hemi-H_ accepts current names with a space
             # entity and legacy names without one.
             effect_pattern = (
-                f"*hemi-{self.hemisphere}_*contrast-{contrast_name}*stat-effect-size{file_ext}"
+                f"*hemi-{self.hemisphere}_*contrast-{contrast_name}_*stat-effect-size{file_ext}"
             )
             variance_pattern = (
-                f"*hemi-{self.hemisphere}_*contrast-{contrast_name}*stat-variance{file_ext}"
+                f"*hemi-{self.hemisphere}_*contrast-{contrast_name}_*stat-variance{file_ext}"
             )
         else:
             file_ext = ".nii.gz"
             # Pattern for volumetric files
-            effect_pattern = f"*contrast-{contrast_name}*stat-effect-size{file_ext}"
-            variance_pattern = f"*contrast-{contrast_name}*stat-variance{file_ext}"
+            effect_pattern = f"*contrast-{contrast_name}_*stat-effect-size{file_ext}"
+            variance_pattern = f"*contrast-{contrast_name}_*stat-variance{file_ext}"
 
         effect_files = []
         variance_files = []
