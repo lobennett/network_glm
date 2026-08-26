@@ -86,6 +86,7 @@ def compute_run_contrasts(
     contrasts: dict[str, str] | None = None,
     hemisphere: str | None = None,
     surface_space: str | None = None,
+    rt_model: str = "RTDur",
 ) -> dict[str, dict[str, Path]]:
     """Compute and save all contrasts for a run.
 
@@ -111,7 +112,7 @@ def compute_run_contrasts(
     """
     # Use task contrasts if none provided
     if contrasts is None:
-        contrasts = get_task_contrasts(task_name)
+        contrasts = get_task_contrasts(task_name, rt_model)
 
     all_saved_files = {}
     output_dir = Path(output_dir)
@@ -137,7 +138,7 @@ def compute_run_contrasts(
             # Create filenames
             contrast_base = (
                 f"{base_filename}{hemi_part}{space_part}"
-                f"_contrast-{contrast_name}_rtmodel-RTDur"
+                f"_contrast-{contrast_name}_rtmodel-{rt_model}"
             )
 
             saved_files = {}

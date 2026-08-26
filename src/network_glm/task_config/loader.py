@@ -46,6 +46,14 @@ _REQUIRED_FIELDS = {"regressors", "contrasts"}
 _REQUIRED_REGRESSOR_FIELDS = {"amplitude", "duration", "subset"}
 
 
+# The RT regressor is declared per task as `response_time` (duration: response_time).
+# `noRT` drops it, and drops any contrast whose formula references it, so the RT variance
+# is left in the residual instead of being modelled. The `rtmodel-` entity in every output
+# filename records which arm produced the map.
+RT_REGRESSOR = "response_time"
+RT_MODELS = ("RTDur", "noRT")
+
+
 class TaskNotConfiguredError(ValueError):
     """Raised when a task's YAML exists but has `regressors: null` (placeholder)."""
 
@@ -246,11 +254,14 @@ def list_available_tasks() -> list[str]:
     return sorted(p.stem for p in _TASKS_DIR.glob("*.yaml"))
 
 
-def get_regressor_config(task_name: str) -> dict[str, dict[str, str]]:
+def get_regressor_config(
+    task_name: str, rt_model: str = "RTDur"
+) -> dict[str, dict[str, str]]:
     """Get regressor configuration for a task.
 
     Args:
         task_name: Name of the task.
+        rt_model: ``"RTDur"`` keeps the RT regressor; ``"noRT"`` drops it.
 
     Returns:
         Dictionary mapping regressor names to their configuration.
@@ -272,6 +283,10 @@ def get_regressor_config(task_name: str) -> dict[str, dict[str, str]]:
             f"Regressor config is empty for task '{task_name}'. "
             "Define regressors in the YAML file before running."
         )
+    if rt_model not in RT_MODELS:
+        raise ValueError(f"rt_model must be one of {RT_MODELS}, got {rt_model!r}")
+    if rt_model == "noRT":
+        regressors = {k: v for k, v in regressors.items() if k != RT_REGRESSOR}
     return _convert_regressor_config(regressors)
 
 
@@ -279,11 +294,13 @@ def get_regressor_config(task_name: str) -> dict[str, dict[str, str]]:
 get_task_regressors = get_regressor_config
 
 
-def get_task_contrasts(task_name: str) -> dict[str, str]:
+def get_task_contrasts(task_name: str, rt_model: str = "RTDur") -> dict[str, str]:
     """Get contrast definitions for a task.
 
     Args:
         task_name: Name of the task.
+        rt_model: ``"noRT"`` also drops every contrast referencing the RT regressor,
+            since the column it names no longer exists in the design.
 
     Returns:
         Dictionary mapping contrast names to formula strings.
@@ -299,6 +316,21 @@ def get_task_contrasts(task_name: str) -> dict[str, str]:
             f"Contrast config is empty for task '{task_name}'. "
             "Define contrasts in the YAML file before running."
         )
+    if rt_model not in RT_MODELS:
+        raise ValueError(f"rt_model must be one of {RT_MODELS}, got {rt_model!r}")
+    if rt_model == "noRT":
+        # Drop by formula, not by name: a contrast is unusable if it *references* the
+        # dropped column, whatever it is called. _IDENT_RE is the same tokeniser
+        # _validate_contrasts uses, so this cannot disagree with it.
+        contrasts = {
+            name: formula for name, formula in contrasts.items()
+            if RT_REGRESSOR not in set(_IDENT_RE.findall(formula))
+        }
+        if not contrasts:
+            raise ValueError(
+                f"task {task_name!r} has no contrasts left under rt_model='noRT': every "
+                f"one references {RT_REGRESSOR!r}."
+            )
     return dict(contrasts)
 
 

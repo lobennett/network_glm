@@ -108,6 +108,7 @@ def process_volumetric_run(
         dirs["indiv_contrasts"],
         base_filename,
         contrasts=contrasts,
+        rt_model=getattr(args, "rt_model", "RTDur"),
     )
     logger.info("Saved %d contrasts", len(contrast_results))
 
@@ -209,7 +210,7 @@ def process_surface_run(
 
         # Compute + save contrasts via the shared saver (RF-6). compute_run_contrasts
         # already supports surface output through its ``hemisphere`` arg — byte-identical
-        # naming (_hemi-H_contrast-..._rtmodel-RTDur_stat-...func.gii), the same three
+        # naming (_hemi-H_contrast-..._rtmodel-<arm>_stat-...func.gii), the same three
         # stat maps, and the same return structure as the volumetric path. The float32
         # recast is a no-op for GIFTI (cast_nifti_to_float32(is_surface=True)).
         contrast_results = compute_run_contrasts(
@@ -220,6 +221,7 @@ def process_surface_run(
             contrasts=contrasts,
             hemisphere=hemisphere,
             surface_space=surface_space,
+            rt_model=getattr(args, "rt_model", "RTDur"),
         )
         logger.info("Saved %d contrasts for hemisphere %s", len(contrast_results), hemisphere)
 
@@ -386,6 +388,7 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
         n_scans,
         tr,
         slice_time_ref=slice_time_ref,
+        rt_model=getattr(args, "rt_model", "RTDur"),
     )
     logger.debug("Design matrix shape: %s", design_matrix.shape)
 
@@ -393,7 +396,7 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     design_matrix, dropped_columns = handle_zero_variance_columns(design_matrix)
 
     # Get and filter contrasts
-    all_contrasts = get_task_contrasts(args.task_name)
+    all_contrasts = get_task_contrasts(args.task_name, getattr(args, "rt_model", "RTDur"))
     contrasts, skipped_contrasts = filter_contrasts_for_dropped_columns(
         all_contrasts, dropped_columns
     )
@@ -536,6 +539,7 @@ def compute_fixed_effects_all(
                     contrast_exclusions=contrast_exclusions,
                     analysis_space=surface_space,
                     smoothing_fwhm=args.smoothing_fwhm,
+                    rt_model=getattr(args, "rt_model", "RTDur"),
                 )
                 logger.info("Fixed effects: %d contrasts (hemi-%s)", len(results), hemisphere)
         else:
@@ -550,6 +554,7 @@ def compute_fixed_effects_all(
                 contrast_exclusions=contrast_exclusions,
                 analysis_space=args.space,
                 smoothing_fwhm=args.smoothing_fwhm,
+                rt_model=getattr(args, "rt_model", "RTDur"),
             )
             logger.info("Fixed effects: %d contrasts", len(results))
     except Exception as e:

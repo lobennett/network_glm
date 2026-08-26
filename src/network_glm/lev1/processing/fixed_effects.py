@@ -65,6 +65,7 @@ class FixedEffectsAnalyzer:
         surface_space: str = "fsnative",
         analysis_space: str | None = None,
         smoothing_fwhm: float | None = None,
+        rt_model: str = "RTDur",
     ):
         """Initialize fixed effects analyzer.
 
@@ -92,6 +93,7 @@ class FixedEffectsAnalyzer:
             surface_space if hemisphere is not None else "volume"
         )
         self.smoothing_fwhm = smoothing_fwhm
+        self.rt_model = rt_model
         self.contrast_results = {}
 
     def find_contrast_files(
@@ -330,7 +332,7 @@ class FixedEffectsAnalyzer:
             f"{self.subject_id}{hemi_tag}{space_tag}"
             f"_task-{self.task_name}"
             f"_contrast-{contrast_name}"
-            f"_rtmodel-RTDur{below_min_tag}"
+            f"_rtmodel-{self.rt_model}{below_min_tag}"
             f"_stat-fixed-effects"
         )
 
@@ -515,7 +517,7 @@ class FixedEffectsAnalyzer:
             ... )
         """
         if contrasts is None:
-            contrasts = get_task_contrasts(self.task_name)
+            contrasts = get_task_contrasts(self.task_name, self.rt_model)
 
         all_saved_files = {}
         exclusions = exclusions or set()
@@ -609,6 +611,7 @@ def compute_subject_fixed_effects(
     contrast_exclusions: set[tuple[str, str]] | None = None,
     analysis_space: str | None = None,
     smoothing_fwhm: float | None = None,
+    rt_model: str = "RTDur",
 ) -> dict[str, dict[str, Path]]:
     """Compute fixed effects for all contrasts for a subject.
 
@@ -646,6 +649,7 @@ def compute_subject_fixed_effects(
         surface_space=surface_space,
         analysis_space=analysis_space,
         smoothing_fwhm=smoothing_fwhm,
+        rt_model=rt_model,
     )
 
     return analyzer.compute_all_task_fixed_effects(

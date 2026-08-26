@@ -142,6 +142,15 @@ def get_parser() -> argparse.ArgumentParser:
         "model), task-only (none). NSI-experiment arms.",
     )
     parser.add_argument(
+        "--rt-model",
+        choices=["RTDur", "noRT"],
+        default="RTDur",
+        help="Whether to model reaction time: RTDur includes the response_time "
+        "regressor (RT as duration); noRT drops it, and drops every contrast that "
+        "references it, leaving RT variance in the residual. Recorded in the "
+        "rtmodel- entity of every output filename, so the two arms can share a tree.",
+    )
+    parser.add_argument(
         "--mni-template",
         default="MNI152NLin2009cAsym",
         help="fMRIPrep MNI template name for --space MNI "

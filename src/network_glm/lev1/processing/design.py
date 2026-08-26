@@ -138,6 +138,7 @@ def create_design_matrix(
     n_scans: int,
     tr: float = 1.49,
     slice_time_ref: float = 0.0,
+    rt_model: str = "RTDur",
 ) -> tuple[pd.DataFrame, list[tuple]]:
     """Create complete design matrix from events and confounds.
 
@@ -163,7 +164,7 @@ def create_design_matrix(
         >>> dm, reg_3col = create_design_matrix(events, confounds, 'stopSignal', 100)
     """
     # Get regressor configuration for this task
-    task_config = get_regressor_config(task_name)
+    task_config = get_regressor_config(task_name, rt_model)
 
     # Create regressors
     regressors = {}
