@@ -3,6 +3,12 @@
 The installed randomise-prep has no `seed` parameter, so run.py injects `--seed` into the
 generated script instead. If that ever stops working the caller raises rather than quietly
 producing unreproducible permutations.
+
+The value must be ATTACHED (``--seed=42``). FSL's option parser rejects a space-separated
+value with "--seed: Missing non-optional argument!" and exits 1 -- verified on fsl/5.0.10.
+That failure was invisible for a while: the generated script runs several randomise calls
+with no errexit, so bash returned the last one's status and the skipped permutation pass
+was reported as success.
 """
 from pathlib import Path
 
@@ -24,9 +30,10 @@ def test_seed_is_injected(tmp_path):
     p.write_text(SCRIPT)
     assert _inject_seed(p, 42) is True
     text = p.read_text()
-    assert "--seed 42" in text
+    assert "--seed=42" in text
+    assert "--seed 42" not in text          # space-separated is rejected by FSL
     # Still a valid continued command, and the original flags survive.
-    assert text.startswith("#!/bin/bash\nrandomise \\\n  --seed 42 \\\n")
+    assert text.startswith("#!/bin/bash\nrandomise \\\n  --seed=42 \\\n")
     assert '-i "/x/in.nii.gz"' in text and "-T -n 5000" in text
 
 

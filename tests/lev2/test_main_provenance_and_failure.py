@@ -84,9 +84,17 @@ def test_main_returns_nonzero_and_skips_provenance_on_analysis_failure(tmp_path,
     assert called["prov"] is False  # no success manifest stamped for a failed run
 
 
-def _stub_randomise(monkeypatch, raises: bool):
+def _write_corrp(output_dir: Path, contrast: str = "c") -> None:
+    """What a real randomise leaves behind, and what run_level2_analysis now checks for."""
+    d = output_dir / contrast
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "onesample_2sided_tfce_corrp_fstat1.nii.gz").write_bytes(b"")
+
+
+def _stub_randomise(monkeypatch, raises: bool, corrp_dir: Path | None = None):
     """Stub compute_mask + randomise_prep + subprocess so run_level2_analysis
-    runs without FSL. If raises, the randomise subprocess fails."""
+    runs without FSL. If raises, the randomise subprocess fails. corrp_dir makes the
+    stubbed success write a corrected map, as a real run would."""
     monkeypatch.setattr(
         lev2_run,
         "compute_mask",
@@ -101,6 +109,8 @@ def _stub_randomise(monkeypatch, raises: bool):
     def _run(cmd, **k):
         if raises:
             raise subprocess.CalledProcessError(1, cmd, output="out", stderr="boom")
+        if corrp_dir is not None:
+            _write_corrp(corrp_dir)
         return subprocess.CompletedProcess(cmd, 0, "ok", "")
 
     monkeypatch.setattr(lev2_run.subprocess, "run", _run)
@@ -113,9 +123,17 @@ def test_run_level2_analysis_returns_false_on_randomise_failure(tmp_path, monkey
 
 
 def test_run_level2_analysis_returns_true_on_success(tmp_path, monkeypatch):
-    _stub_randomise(monkeypatch, raises=False)
+    _stub_randomise(monkeypatch, raises=False, corrp_dir=tmp_path)
     ok = lev2_run.run_level2_analysis("c", ["/fe1.nii.gz"], tmp_path)
     assert ok is True
+
+
+def test_zero_exit_without_a_corrected_map_is_not_success(tmp_path, monkeypatch):
+    """The bug this guards: fsl rejected `--seed 0`, so the permutation pass never ran,
+    but the script's later calls succeeded and bash returned 0. Only the uncorrected
+    tstat existed and the run was reported as a success."""
+    _stub_randomise(monkeypatch, raises=False)      # exits 0, writes nothing
+    assert lev2_run.run_level2_analysis("c", ["/fe1.nii.gz"], tmp_path) is False
 
 
 def test_run_level2_analysis_returns_false_on_no_inputs(tmp_path):
@@ -141,9 +159,11 @@ def test_run_level2_analysis_forwards_seed_to_randomise(tmp_path, monkeypatch):
 
     fake_mod.setup_randomise_tfce = _setup
     monkeypatch.setitem(sys.modules, "randomise_prep", fake_mod)
-    monkeypatch.setattr(
-        lev2_run.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(cmd, 0, "ok", "")
-    )
+    def _run(cmd, **k):
+        _write_corrp(tmp_path)
+        return subprocess.CompletedProcess(cmd, 0, "ok", "")
+
+    monkeypatch.setattr(lev2_run.subprocess, "run", _run)
 
     ok = lev2_run.run_level2_analysis("c", ["/fe1.nii.gz"], tmp_path, seed=4242)
     assert ok is True

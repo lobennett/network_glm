@@ -203,8 +203,10 @@ def _inject_seed(script_path: Path, seed: int) -> bool:
         return True
     if "randomise \\\n" not in text:
         return False
+    # `--seed={seed}`, attached: FSL's parser rejects a space-separated value with
+    # "--seed: Missing non-optional argument!" and exits 1 (checked on fsl/5.0.10).
     script_path.write_text(text.replace("randomise \\\n",
-                                        f"randomise \\\n  --seed {seed} \\\n", 1))
+                                        f"randomise \\\n  --seed={seed} \\\n", 1))
     return True
 
 
@@ -278,15 +280,29 @@ def run_level2_analysis(
 
     print("Running FSL randomise...")
     try:
-        subprocess.run(["bash", script_path], capture_output=True, text=True, check=True)
-        print("✓ FSL randomise completed successfully")
-        print(f"Results saved to: {contrast_output_dir}")
+        # `-e`: the script runs several randomise calls and sets no errexit itself, so
+        # without this bash reports only the last one's status and a failed permutation
+        # pass looks like success.
+        subprocess.run(["bash", "-e", script_path],
+                       capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
         print(f"✗ FSL randomise failed: {e}")
         print(f"Stdout: {e.stdout}")
         print(f"Stderr: {e.stderr}")
         return False
 
+    # Belt and braces: a zero exit is not proof the corrected maps exist, and an
+    # uncorrected-only result silently published as a group map is the worst outcome here.
+    corrp = sorted(contrast_output_dir.glob("*corrp*.nii.gz"))
+    if not corrp:
+        print(f"✗ FSL randomise produced no corrected p-value map in "
+              f"{contrast_output_dir}; refusing to report success. "
+              f"Check {contrast_output_dir / 'randomise_call.sh'}.")
+        return False
+
+    print("✓ FSL randomise completed successfully")
+    print(f"  corrected maps: {', '.join(p.name for p in corrp)}")
+    print(f"Results saved to: {contrast_output_dir}")
     return True
 
 
