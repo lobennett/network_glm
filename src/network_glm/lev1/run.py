@@ -21,7 +21,7 @@ from network_glm.lev1.runner import (
     compute_fixed_effects_all,
     process_single_run,
 )
-from network_glm.task_config.loader import get_task_parameters
+from network_glm.task_config.loader import RT_MODELS, get_task_parameters
 from network_glm import provenance
 
 logger = logging.getLogger(__name__)
@@ -143,12 +143,15 @@ def get_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--rt-model",
-        choices=["RTDur", "noRT"],
+        choices=list(RT_MODELS),
         default="RTDur",
-        help="Whether to model reaction time: RTDur includes the response_time "
-        "regressor (RT as duration); noRT drops it, and drops every contrast that "
-        "references it, leaving RT variance in the residual. Recorded in the "
-        "rtmodel- entity of every output filename, so the two arms can share a tree.",
+        help="How reaction time enters the design. RTDur (default) is the study model: "
+        "constant-duration conditions plus a pooled response_time regressor carrying "
+        "duration = RT. noRT drops that regressor, leaving RT variance in the residual. "
+        "RTepoch is a Grinband-style variable epoch -- no RT regressor, and each condition "
+        "carries duration = RT; it does not apply to the inhibition tasks, whose stop/nogo "
+        "trials have no response. Each arm is recorded in the rtmodel- entity of every "
+        "output filename, so arms can share a results tree.",
     )
     parser.add_argument(
         "--mni-template",
