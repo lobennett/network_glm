@@ -185,15 +185,19 @@ def create_design_matrix(
     design_matrices = [*regressors.values(), confounds_df]
     design_matrix = pd.concat(design_matrices, axis=1)
 
-    # Ensure an intercept/constant term exists in the design matrix.
-    # fMRIPrep confounds typically include cosine00 (a constant column),
-    # but if absent, the GLM needs an explicit intercept.
+    # Ensure an intercept, without creating a second one. Any constant non-zero column is
+    # functionally an intercept, so adding `constant` alongside it would make the design
+    # singular -- hence the value check rather than a name check.
+    #
+    # Note fMRIPrep's cosine00 is NOT such a column: it is the first DCT basis function and
+    # varies over the run (235 unique values in this study's flanker runs). In practice the
+    # confounds supply no intercept and one is always added here.
     has_constant = any(
         design_matrix[col].nunique() == 1 and design_matrix[col].iloc[0] != 0
         for col in design_matrix.columns
     )
     if not has_constant:
-        logger.warning("No constant/intercept column detected; adding one")
+        logger.debug("No constant column among the confounds; adding an intercept")
         design_matrix["constant"] = 1.0
 
     return design_matrix, regressor_3cols

@@ -63,3 +63,48 @@ class TestFilenames:
             a = FixedEffectsAnalyzer("sub-s03", "flanker", rt_model=arm)
             a.contrast_results = {"incongruent-congruent": {"n_runs": 5}}
             assert f"_rtmodel-{arm}" in a._build_base_filename("incongruent-congruent")
+
+
+class TestRTepoch:
+    """Grinband variable epoch: no RT regressor, conditions carry duration = RT."""
+
+    def test_rt_regressor_is_dropped(self):
+        assert RT_REGRESSOR not in get_regressor_config("flanker", "RTepoch")
+
+    def test_conditions_carry_rt_duration(self):
+        r = get_regressor_config("flanker", "RTepoch")
+        for cond in ("congruent", "incongruent"):
+            assert r[cond]["duration_column"] == RT_REGRESSOR
+
+    def test_non_condition_durations_are_untouched(self):
+        """Nuisance epochs keep their own durations; only constant-duration conditions move."""
+        base = get_regressor_config("flanker", "RTDur")
+        out = get_regressor_config("flanker", "RTepoch")
+        for name in ("omission", "commission", "rt_fast",
+                     "break_with_performance_feedback"):
+            assert out[name]["duration_column"] == base[name]["duration_column"], name
+
+    def test_contrasts_referencing_rt_are_dropped(self):
+        out = get_task_contrasts("flanker", "RTepoch")
+        assert all(RT_REGRESSOR not in f for f in out.values())
+        assert "incongruent-congruent" in out and "task-baseline" in out
+
+    @pytest.mark.parametrize(
+        "task", ["goNogo", "stopSignal", "stopSignalWFlanker",
+                 "stopSignalWDirectedForgetting"])
+    def test_refuses_the_inhibition_tasks(self, task):
+        """stop/nogo trials have no response, so they cannot carry duration = RT.
+        Converting only the responded conditions would contrast an RT-length epoch
+        against a one-second epoch."""
+        with pytest.raises(ValueError, match="RTepoch"):
+            get_regressor_config(task, "RTepoch")
+
+    def test_every_other_base_task_converts(self):
+        from network_glm.task_config.loader import get_base_tasks
+        inhibition = {"goNogo", "stopSignal"}
+        for task in get_base_tasks():
+            if task in inhibition:
+                continue
+            r = get_regressor_config(task, "RTepoch")
+            assert RT_REGRESSOR not in r, task
+            assert any(v["duration_column"] == RT_REGRESSOR for v in r.values()), task

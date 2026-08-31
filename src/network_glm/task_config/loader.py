@@ -46,12 +46,25 @@ _REQUIRED_FIELDS = {"regressors", "contrasts"}
 _REQUIRED_REGRESSOR_FIELDS = {"amplitude", "duration", "subset"}
 
 
-# The RT regressor is declared per task as `response_time` (duration: response_time).
-# `noRT` drops it, and drops any contrast whose formula references it, so the RT variance
-# is left in the residual instead of being modelled. The `rtmodel-` entity in every output
-# filename records which arm produced the map.
+# RT arms. The `rtmodel-` entity in every output filename records which one produced a map,
+# so arms can share a results tree.
+#
+#   RTDur   Mumford et al. 2023 (Nat Hum Behav 8:349-360,
+#           doi:10.1038/s41562-023-01760-0): constant-duration condition regressors plus a
+#           pooled `response_time` regressor carrying duration = RT. The study default.
+#   noRT    drops the RT regressor, and any contrast referencing it. RT variance is left
+#           in the residual.
+#   RTepoch Grinband-style variable epoch: no separate RT regressor, and each condition
+#           regressor carries duration = RT instead of a constant. A comparison arm.
 RT_REGRESSOR = "response_time"
-RT_MODELS = ("RTDur", "noRT")
+RT_MODELS = ("RTDur", "noRT", "RTepoch")
+
+# A condition regressor can only take duration = RT if its subset already guarantees a
+# valid RT. In this battery that is true of every condition except the stop/nogo regressors
+# of the four inhibition tasks, whose trials have no response. Converting those would either
+# drop them entirely (RT is NaN) or, worse, leave a contrast comparing an RT-length epoch
+# against a one-second epoch -- a scale mismatch, not a model. RTepoch refuses instead.
+_RT_SUBSET_MARKER = "response_time >="
 
 
 class TaskNotConfiguredError(ValueError):
@@ -285,9 +298,36 @@ def get_regressor_config(
         )
     if rt_model not in RT_MODELS:
         raise ValueError(f"rt_model must be one of {RT_MODELS}, got {rt_model!r}")
-    if rt_model == "noRT":
+    if rt_model in ("noRT", "RTepoch"):
         regressors = {k: v for k, v in regressors.items() if k != RT_REGRESSOR}
+    if rt_model == "RTepoch":
+        regressors = _to_variable_epoch(task_name, regressors)
     return _convert_regressor_config(regressors)
+
+
+def _to_variable_epoch(task_name: str, regressors: dict) -> dict:
+    """Give each constant-duration condition regressor duration = RT (Grinband).
+
+    Refuses rather than guesses: a task with a constant-duration regressor whose subset does
+    not guarantee a valid RT (the stop/nogo conditions) cannot be expressed this way without
+    mixing epoch lengths inside its own contrasts.
+    """
+    const = {k: v for k, v in regressors.items() if str(v.get("duration")) == "1"}
+    unconvertible = [
+        k for k, v in const.items()
+        if _RT_SUBSET_MARKER not in " ".join(str(v.get("subset") or "").split())
+    ]
+    if unconvertible:
+        raise ValueError(
+            f"rt_model='RTepoch' does not apply to task {task_name!r}: "
+            f"{sorted(unconvertible)} have no response, so they cannot carry duration = RT. "
+            f"Converting only the responded conditions would contrast an RT-length epoch "
+            f"against a one-second epoch. Use 'RTDur' or 'noRT' for the inhibition tasks."
+        )
+    out = dict(regressors)
+    for k in const:
+        out[k] = {**regressors[k], "duration": RT_REGRESSOR}
+    return out
 
 
 # Canonical name used by lev1 callers; alias kept for backward compatibility.
@@ -318,7 +358,7 @@ def get_task_contrasts(task_name: str, rt_model: str = "RTDur") -> dict[str, str
         )
     if rt_model not in RT_MODELS:
         raise ValueError(f"rt_model must be one of {RT_MODELS}, got {rt_model!r}")
-    if rt_model == "noRT":
+    if rt_model in ("noRT", "RTepoch"):
         # Drop by formula, not by name: a contrast is unusable if it *references* the
         # dropped column, whatever it is called. _IDENT_RE is the same tokeniser
         # _validate_contrasts uses, so this cannot disagree with it.

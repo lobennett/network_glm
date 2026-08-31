@@ -10,6 +10,11 @@ from nilearn.glm.contrasts import expression_to_contrast_vector
 logger = logging.getLogger(__name__)
 
 
+# Matches the default used by the cohort QC step so a run-level warning and a
+# cohort-level flag do not disagree.
+VIF_WARN_THRESHOLD = 5.0
+
+
 def est_contrast_vifs(desmat, contrasts):
     """
     IMPORTANT: This is only valid to use on design matrices where each regressor represents a condition vs baseline
@@ -63,9 +68,10 @@ def run_quality_control(
 ) -> tuple[dict[str, float], bool]:
     """Run quality control analysis.
 
-    Computes per-contrast VIFs and writes them to a CSV alongside the design
-    matrix. Does NOT fail-fast on high VIFs — those are surfaced for manual
-    review by the cohort QC step (`network_glm.cohort.outliers`) which
+    Computes per-contrast VIFs, warns about any at or above
+    ``VIF_WARN_THRESHOLD``, and writes them all to a CSV alongside the design
+    matrix. Does NOT fail-fast on high VIFs — those are also surfaced for
+    aggregate review by the cohort QC step (`network_glm.cohort.outliers`) which
     aggregates VIFs across subjects and flags >threshold (default 5) entries
     in `lev1_flagged.tsv`.
 
@@ -133,13 +139,27 @@ def run_quality_control(
         any_fail = True
         logger.warning("QA FAIL: High junk percentage: %.1f%% (> 30%%)", percent_junk * 100)
 
-    # Calculate contrast VIFs (saved to CSV; not used to fail QA — cohort QC
-    # at network_glm.cohort.outliers handles thresholding for review).
+    # Calculate contrast VIFs. These do not fail QA -- cohort QC at
+    # network_glm.cohort.outliers owns thresholding for review -- but a badly
+    # conditioned contrast is warned about here, at the run that produced it.
+    # Writing them only to a CSV and logging at debug hid VIFs above 20 for an
+    # entire study; a contrast at VIF 20 has its standard error inflated ~4.5x.
     try:
         vifs = est_contrast_vifs(design_matrix, contrasts)
     except Exception as e:
         logger.warning("VIF calculation failed: %s", e)
         vifs = {name: 0.0 for name in contrasts.keys()}
+    else:
+        inflated = sorted(
+            ((n, v) for n, v in vifs.items() if v >= VIF_WARN_THRESHOLD),
+            key=lambda kv: -kv[1],
+        )
+        if inflated:
+            logger.warning(
+                "High contrast VIF (>= %g), standard errors inflated by sqrt(VIF): %s",
+                VIF_WARN_THRESHOLD,
+                "; ".join(f"{n}={v:.1f}" for n, v in inflated),
+            )
 
     # Save design matrix to quality control directory
     output_dir = Path(output_dir)
