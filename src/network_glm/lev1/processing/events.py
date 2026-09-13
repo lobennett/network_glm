@@ -177,7 +177,9 @@ def define_nuisance_trials(events_df: pd.DataFrame, task: str) -> dict[str, pd.S
     }
 
 
-def add_junk_trials(events_df: pd.DataFrame, task_name: str) -> tuple[pd.DataFrame, float]:
+def add_junk_trials(
+    events_df: pd.DataFrame, task_name: str
+) -> tuple[pd.DataFrame, float]:
     """Calculate percentage of junk trials and add nuisance regressors to dataframe.
 
     Args:
@@ -204,9 +206,144 @@ def add_junk_trials(events_df: pd.DataFrame, task_name: str) -> tuple[pd.DataFra
     # Denominator is the number of relevant trials (test/go), not all events,
     # so that non-test events (breaks, cues, etc.) don't dilute the junk rate.
     n_relevant = nuisance_masks["trial_filter"].sum()
-    junk_percentage = nuisance_masks["bad_trials"].sum() / n_relevant if n_relevant > 0 else 0.0
+    junk_percentage = (
+        nuisance_masks["bad_trials"].sum() / n_relevant if n_relevant > 0 else 0.0
+    )
 
     return events_df, junk_percentage
+
+
+def stop_fail_violation(
+    events: pd.DataFrame,
+    trial_id: str = "trial_id",
+    trial_type: str = "trial_type",
+    rt: str = "response_time",
+    output: str = "stop_failure_violation",
+    go: str = "go",
+) -> pd.DataFrame:
+    """
+    Add a per-run column with the violation amplitude for stop_failure trials
+    For each stop_failure trial:
+      amplitude = stop_failure_rt of trial N - valid_go_rt of trial N-1
+
+    Note: If a run produces 0 or 1 defined violations, no regressor is produced
+    (the column is left all NaN) and the corresponding contrast is dropped at the
+    design-matrix stage (handle_zero_variance_columns/filter_contrasts_for_dropped_columns)
+    -- a run with too few violations silently loses this contrast instead of erroring.
+
+    Scope note: task-name gating for this regressor (in runner.py) currently
+    matches only "stopsignal"/"stop_signal" and does not extend to the dual
+    tasks (e.g. stopSignalWFlanker).
+    """
+    df = events.copy()
+
+    df["rt_num"] = pd.to_numeric(df[rt], errors="coerce")
+    if "onset" in df.columns:
+        order = list(df.sort_values("onset").index)
+    else:
+        order = list(df.index)
+
+    # result Series indexed like the original and filled with NaN
+    result = pd.Series(np.nan, index=df.index, dtype=float)
+
+    def check_if_test_trial(label) -> bool:
+        # Returns true if the row is a test_trial and false if it is a test_fixation or na/n
+        if label is None or label not in df.index:
+            return False
+        val = df.at[label, trial_id]
+        return val == "test_trial"
+
+    def prev_is_valid_go(prev_label) -> bool:
+        if prev_label is None or prev_label not in df.index:
+            return False
+
+        if df.at[prev_label, trial_type] != go:  # check if prev test_trial is go
+            return False
+
+        prev_rt = df.at[prev_label, "rt_num"]  # RT invalid if -1 or NaN
+        if pd.isna(prev_rt):
+            return False
+        if prev_rt == -1:  # omission
+            return False
+        if prev_rt < MIN_RT:  # too fast
+            return False
+
+        if ("key_press" in df.columns) and (
+            "correct_response" in df.columns
+        ):  # checks go_acc
+            key_press = pd.to_numeric(
+                df.at[prev_label, "key_press"], errors="coerce"
+            )
+            correct_resp = pd.to_numeric(
+                df.at[prev_label, "correct_response"], errors="coerce"
+            )
+            if key_press != correct_resp:
+                return False
+
+        return True
+
+    amplitudes = []
+    amp_labels = []
+    prev_test_label = None
+
+    for label in order:
+        if trial_id and trial_id in df.columns:
+            if not check_if_test_trial(label):  # skips non_test trials
+                continue
+        else:
+            logger.warning(
+                "no valid trial_id found; treating all rows as non_test (no violations will be found)"
+            )
+            continue
+
+        cur_trial_type = df.at[label, trial_type]
+
+        if cur_trial_type == "stop_failure":
+            if prev_test_label is None:  # no previous test trial to pair with
+                prev_test_label = label
+                continue
+
+            cur_rt = df.at[label, "rt_num"]
+            if pd.isna(cur_rt):
+                prev_test_label = label
+                continue
+            if cur_rt == -1:
+                prev_test_label = label
+                continue
+            if cur_rt < MIN_RT:
+                prev_test_label = label
+                continue
+
+            if prev_is_valid_go(prev_test_label):
+                prev_rt_val = df.at[prev_test_label, "rt_num"]
+                amp = float(cur_rt) - float(prev_rt_val)
+                amplitudes.append(amp)
+                amp_labels.append(label)
+        prev_test_label = label
+
+    n_violations = len(amplitudes)
+    logger.info(
+        "stop_fail_violation: run produced %d defined violation(s)", n_violations,
+    )
+    if n_violations == 0:
+        logger.info(
+            "stop_fail_violation: run produced zero defined violations; '%s' is all NaN",
+            output,
+        )
+    elif n_violations == 1:
+        logger.warning(
+            "stop_fail_violation: run produced one defined violation, after centering it would be 0.0 and dropped downstream. Leaving all '%s' NaN",
+            output,
+        )
+    else:
+        mean_amp = float(np.mean(amplitudes))
+        centered = [each - mean_amp for each in amplitudes]
+        for label, v in zip(amp_labels, centered):
+            result.at[label] = v
+
+    df[output] = result
+    df = df.drop(columns=["rt_num"])
+    return df
 
 
 def save_simplified_events(regressor_3cols: list, output_file: str | Path) -> Path:
