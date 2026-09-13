@@ -15,6 +15,7 @@ import pandas as pd
 
 from network_glm.acquisition import resolve_slice_time_ref
 from network_glm.exclusions import load_contrast_exclusions
+from network_glm.lev1 import cache
 from network_glm.lev1.processing.cifti_io import load_dtseries
 from network_glm.lev1.processing.confounds import (
     get_fc_confounds,
@@ -40,7 +41,6 @@ from network_glm.lev1.processing.glm import (
 )
 from network_glm.lev1.processing.quality_control import run_quality_control
 from network_glm.lev1.processing.residuals import (
-    cifti_residual_filename,
     process_cifti_residuals,
     process_run_residuals,
     process_surface_residuals,
@@ -55,7 +55,11 @@ from network_glm.lev1.processing.surface_data import (
     resolve_freesurfer_subject,
     smooth_surface_gifti,
 )
-from network_glm.lev1.spaces import is_cifti_space, is_surface_space, resolve_surface_space
+from network_glm.lev1.spaces import (
+    is_cifti_space,
+    is_surface_space,
+    resolve_surface_space,
+)
 from network_glm.task_config.loader import get_task_contrasts
 
 logger = logging.getLogger(__name__)
@@ -85,7 +89,7 @@ def process_volumetric_run(
     """
     validation = validate_glm_inputs(bold_data, design_matrix, run_files[mask_key])
     if not validation["is_valid"]:
-        raise ValueError(f'GLM validation failed: {validation["errors"]}')
+        raise ValueError(f"GLM validation failed: {validation['errors']}")
 
     run_mask = run_files[mask_key]
 
@@ -114,6 +118,7 @@ def process_volumetric_run(
 
     # Process residuals if requested
     if compute_residuals:
+        no_filter = getattr(args, "no_residual_filter", False)
         residuals_result = process_run_residuals(
             fitted_glm,
             dirs["task_residuals"],
@@ -121,9 +126,16 @@ def process_volumetric_run(
             tr,
             mask_img=run_mask,
             fc_confounds=fc_confounds,
+            filtering_params={
+                "low_pass": None if no_filter else 0.1,
+                "high_pass": None if no_filter else 0.01,
+                "standardize": False,
+                "detrend": False,
+                "confounds": fc_confounds,
+            },
         )
         if not residuals_result["success"]:
-            logger.warning("Residuals processing had issues: %s", residuals_result["errors"])
+            raise RuntimeError(f"Volume residuals failed: {residuals_result['errors']}")
 
     return contrast_results
 
@@ -166,7 +178,9 @@ def process_surface_run(
     if args.smoothing_fwhm is not None:
         subjects_dir = find_freesurfer_subjects_dir(Path(args.fmriprep_dir))
         if subjects_dir is None:
-            raise FileNotFoundError("Cannot find FreeSurfer subjects dir for surface smoothing")
+            raise FileNotFoundError(
+                "Cannot find FreeSurfer subjects dir for surface smoothing"
+            )
         if surface_space in ("fsaverage", "fsaverage6"):
             fs_subject = "fsaverage6"
         else:
@@ -199,10 +213,13 @@ def process_surface_run(
         # mis-shaped designs through nilearn run_glm into garbage contrast maps.
         # We validate once per hemisphere because each hemisphere produces its own
         # surface_data and the row-count check needs that array's first dim.
-        validation = validate_design_matrix(design_matrix, n_scans=surface_data.shape[0])
+        validation = validate_design_matrix(
+            design_matrix, n_scans=surface_data.shape[0]
+        )
         if not validation["is_valid"]:
             raise ValueError(
-                f'Surface GLM validation failed (hemi-{hemisphere}): ' f'{validation["errors"]}'
+                f"Surface GLM validation failed (hemi-{hemisphere}): "
+                f"{validation['errors']}"
             )
 
         surface_glm = SurfaceGLM(t_r=tr)
@@ -223,39 +240,32 @@ def process_surface_run(
             surface_space=surface_space,
             rt_model=getattr(args, "rt_model", "RTDur"),
         )
-        logger.info("Saved %d contrasts for hemisphere %s", len(contrast_results), hemisphere)
+        logger.info(
+            "Saved %d contrasts for hemisphere %s", len(contrast_results), hemisphere
+        )
 
-        # Generate QC plots (skipped under --skip-qc-plots; matplotlib renders
-        # are slow at cohort scale — ~10 plots × 2 hemis × N runs adds many
-        # hours of wall time per subject. The .func.gii files are persisted
-        # above and can be re-plotted offline if review is needed.)
-        if getattr(args, "skip_qc_plots", False):
-            logger.debug("Skipping QC plots for hemisphere %s (--skip-qc-plots)", hemisphere)
-            continue
-        qc_count = 0
-        for contrast_name, paths in contrast_results.items():
-            try:
-                qc_filename = (
-                    f"{base_filename}_hemi-{hemisphere}" f"_contrast-{contrast_name}_qc.png"
-                )
-                qc_path = dirs["quality_control"] / qc_filename
-                title = f"{args.subj_id} - {contrast_name} (hemi-{hemisphere})"
-                plot_surface_stat_map(
-                    paths["effect_size"],
-                    qc_path,
-                    hemisphere,
-                    title=title,
-                    fmriprep_dir=Path(args.fmriprep_dir),
-                    subject_id=args.subj_id,
-                )
-                qc_count += 1
-            except Exception as e:
-                logger.debug("Failed to plot %s: %s", contrast_name, e)
-        logger.debug("Saved %d QC plots for hemisphere %s", qc_count, hemisphere)
+        # Plotting is optional; fitting and residual writing are independent of it.
+        if not getattr(args, "skip_qc_plots", False):
+            for contrast_name, paths in contrast_results.items():
+                try:
+                    qc_path = dirs["quality_control"] / (
+                        f"{base_filename}_hemi-{hemisphere}_contrast-{contrast_name}_qc.png"
+                    )
+                    plot_surface_stat_map(
+                        paths["effect_size"],
+                        qc_path,
+                        hemisphere,
+                        title=f"{args.subj_id} - {contrast_name} (hemi-{hemisphere})",
+                        fmriprep_dir=Path(args.fmriprep_dir),
+                        subject_id=args.subj_id,
+                    )
+                except Exception as e:
+                    logger.debug("Failed to plot %s: %s", contrast_name, e)
 
         # Process surface residuals if requested
         if compute_residuals:
-            process_surface_residuals(
+            no_filter = getattr(args, "no_residual_filter", False)
+            residuals_result = process_surface_residuals(
                 surface_glm,
                 dirs["task_residuals"],
                 base_filename,
@@ -263,14 +273,22 @@ def process_surface_run(
                 tr,
                 fc_confounds=fc_confounds,
                 surface_space=surface_space,
+                low_pass=None if no_filter else 0.1,
+                high_pass=None if no_filter else 0.01,
             )
+            if not residuals_result["success"]:
+                raise RuntimeError(
+                    f"Surface residuals failed (hemi-{hemisphere}): {residuals_result['errors']}"
+                )
 
         all_hemisphere_results[hemisphere] = contrast_results
 
     return all_hemisphere_results
 
 
-def process_cifti_run(run_files, design_matrix, args, dirs, base_filename, tr, fc_confounds=None):
+def process_cifti_run(
+    run_files, design_matrix, args, dirs, base_filename, tr, fc_confounds=None
+):
     """Fit a GLM over fsLR den-91k grayordinates and write residuals as a dtseries."""
     if not getattr(args, "residuals", False):
         raise ValueError("--space fsLR is residuals-only; pass --residuals.")
@@ -282,10 +300,19 @@ def process_cifti_run(run_files, design_matrix, args, dirs, base_filename, tr, f
     no_filter = getattr(args, "no_residual_filter", False)
     lp = None if no_filter else 0.1
     hp = None if no_filter else 0.01
-    return process_cifti_residuals(
-        glm, template, dirs["task_residuals"], base_filename, tr,
-        low_pass=lp, high_pass=hp, fc_confounds=fc_confounds,
+    result = process_cifti_residuals(
+        glm,
+        template,
+        dirs["task_residuals"],
+        base_filename,
+        tr,
+        low_pass=lp,
+        high_pass=hp,
+        fc_confounds=fc_confounds,
     )
+    if not result["success"]:
+        raise RuntimeError(f"CIFTI residuals failed: {result['errors']}")
+    return result
 
 
 def _run_base_filename(subj_id, session, task_name, run):
@@ -293,7 +320,9 @@ def _run_base_filename(subj_id, session, task_name, run):
     return f"{subj_id}_{session}_task-{task_name}_{run}"
 
 
-def process_single_run(session, run, run_files, args, sample_type, dirs, task_params, exclusions):
+def process_single_run(
+    session, run, run_files, args, sample_type, dirs, task_params, exclusions
+):
     """Process a single run (volumetric or surface).
 
     Returns:
@@ -306,30 +335,26 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
         logger.info("Skipping excluded run: %s/%s", session, run)
         return True  # Not a failure, just skipped
 
-    # Skip if all output files already exist
-    if args.skip_existing:
-        base_filename = _run_base_filename(args.subj_id, session, args.task_name, run)
-        if is_surface_space(args.space) and args.residuals:
-            surface_space = resolve_surface_space(args.space)
-            lh_res = dirs["task_residuals"] / surface_residual_filename(
-                base_filename, "L", surface_space
+    completion = dirs["task_residuals"] / f"{run_key}_completion.json"
+    signature = cache.run_signature(run_files, args, task_params, sample_type)
+    if args.skip_existing and cache.can_reuse(completion, signature):
+        logger.info(
+            "Skipping %s (matching completed inputs, settings, and outputs)", run_key
+        )
+        return True
+    cache.mark_running(completion)
+    if not is_cifti_space(args.space):
+        prefix = run_key
+        extension = ".nii.gz"
+        if is_surface_space(args.space):
+            prefix += f"_hemi-*_space-{resolve_surface_space(args.space)}"
+            extension = ".func.gii"
+        rt_model = getattr(args, "rt_model", "RTDur")
+        cache.retire_outputs(
+            dirs["indiv_contrasts"].glob(
+                f"{prefix}_contrast-*_rtmodel-{rt_model}_stat-*{extension}"
             )
-            rh_res = dirs["task_residuals"] / surface_residual_filename(
-                base_filename, "R", surface_space
-            )
-            if lh_res.exists() and rh_res.exists():
-                logger.info("Skipping %s (outputs already exist)", run_key)
-                return True
-        elif is_cifti_space(args.space) and args.residuals:
-            cifti_res = dirs["task_residuals"] / cifti_residual_filename(base_filename)
-            if cifti_res.exists():
-                logger.info("Skipping %s (outputs already exist)", run_key)
-                return True
-        elif not is_surface_space(args.space) and args.residuals:
-            vol_res = dirs["task_residuals"] / f"{base_filename}_task-regressed-residuals.nii.gz"
-            if vol_res.exists():
-                logger.info("Skipping %s (outputs already exist)", run_key)
-                return True
+        )
 
     logger.info("Processing %s/%s...", session, run)
 
@@ -354,7 +379,9 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
         if mask_key not in run_files or data_key not in run_files:
             raise ValueError(f"Missing required files for {session}/{run}")
         # BOLD is already trimmed by trim_bold.py; load without further removal
-        bold_data = load_bold_data_with_dummy_removal(run_files[data_key], dummy_scans=0)
+        bold_data = load_bold_data_with_dummy_removal(
+            run_files[data_key], dummy_scans=0
+        )
         n_scans = bold_data.shape[3]
         bold_for_sidecar = run_files[data_key]
 
@@ -367,18 +394,27 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     # Onsets are already adjusted for dummy scans during event file creation
     # (shifted by -7*1.49s = -10.43s); do not adjust again
     events_df = pd.read_csv(run_files["events"], sep="\t")
-    processed_events = preprocess_events(events_df, args.task_name, n_scans=n_scans, tr=tr)
-    processed_events_with_junk, percent_junk = add_junk_trials(processed_events, args.task_name)
+    processed_events = preprocess_events(
+        events_df, args.task_name, n_scans=n_scans, tr=tr
+    )
+    processed_events_with_junk, percent_junk = add_junk_trials(
+        processed_events, args.task_name
+    )
 
     # Load confounds. BOLD is pre-trimmed by scripts/trim_bold.py and fMRIPrep
     # is run with --dummy-scans 0, so the confounds TSV already matches the
     # trimmed BOLD length. Do not trim confounds further.
     selected_confounds = load_and_process_confounds(
-        run_files["confounds"], args.task_name, sample_type, dummy_scans=0,
+        run_files["confounds"],
+        args.task_name,
+        sample_type,
+        dummy_scans=0,
         confounds_mode=getattr(args, "confounds_mode", "full"),
     )
     if len(selected_confounds) != n_scans:
-        raise ValueError(f"Confounds length mismatch: {len(selected_confounds)} != {n_scans}")
+        raise ValueError(
+            f"Confounds length mismatch: {len(selected_confounds)} != {n_scans}"
+        )
 
     # Create design matrix
     design_matrix, regressor_3cols = create_design_matrix(
@@ -396,7 +432,9 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     design_matrix, dropped_columns = handle_zero_variance_columns(design_matrix)
 
     # Get and filter contrasts
-    all_contrasts = get_task_contrasts(args.task_name, getattr(args, "rt_model", "RTDur"))
+    all_contrasts = get_task_contrasts(
+        args.task_name, getattr(args, "rt_model", "RTDur")
+    )
     contrasts, skipped_contrasts = filter_contrasts_for_dropped_columns(
         all_contrasts, dropped_columns
     )
@@ -432,7 +470,9 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     # in either space (previously volumetric silently ignored the flag).
     fc_confounds = None
     if args.residuals and args.fc_confounds:
-        confounds_df = pd.read_csv(run_files["confounds"], sep="\t", na_values=["n/a"]).fillna(0)
+        confounds_df = pd.read_csv(
+            run_files["confounds"], sep="\t", na_values=["n/a"]
+        ).fillna(0)
         fc_confounds_df = get_fc_confounds(confounds_df)
         if not fc_confounds_df.empty:
             # BOLD is pre-trimmed and fMRIPrep runs with --dummy-scans 0,
@@ -441,7 +481,7 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
             logger.info("FC confounds: %d columns", fc_confounds.shape[1])
 
     if is_cifti_space(args.space):
-        process_cifti_run(
+        results = process_cifti_run(
             run_files,
             design_matrix,
             args,
@@ -453,7 +493,7 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
     elif is_surface_space(args.space):
         surface_space = resolve_surface_space(args.space)
 
-        process_surface_run(
+        results = process_surface_run(
             run_files,
             design_matrix,
             contrasts,
@@ -468,7 +508,7 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
         )
     else:
         compute_residuals = args.residuals
-        process_volumetric_run(
+        results = process_volumetric_run(
             bold_data,
             design_matrix,
             contrasts,
@@ -482,6 +522,23 @@ def process_single_run(session, run, run_files, args, sample_type, dirs, task_pa
             fc_confounds=fc_confounds,
         )
 
+    outputs = cache.saved_paths(results)
+    if args.residuals:
+        if is_surface_space(args.space):
+            outputs.extend(
+                dirs["task_residuals"]
+                / surface_residual_filename(
+                    base_filename, hemisphere, resolve_surface_space(args.space)
+                )
+                for hemisphere in ("L", "R")
+            )
+        elif not is_cifti_space(args.space):
+            outputs.append(
+                dirs["task_residuals"]
+                / f"{base_filename}_task-regressed-residuals.nii.gz"
+            )
+    if signature is not None and outputs:
+        cache.save_completion(completion, signature, outputs)
     return True
 
 
@@ -495,7 +552,7 @@ def compute_fixed_effects_all(
 ):
     """Compute fixed effects across runs, supporting partial-run analysis.
 
-    Tags output with desc-partialRuns if any runs failed.
+    Failed runs cannot contribute maps left by an earlier invocation.
     """
     if is_cifti_space(args.space):
         logger.info("Skipping fixed-effects for CIFTI/fsLR (residuals-only path)")
@@ -504,10 +561,17 @@ def compute_fixed_effects_all(
     # Compute fixed effects on available successful runs (partial run support)
     successful_runs = run_count - len(failed_runs)
     if successful_runs == 0:
-        logger.error("No successful runs - skipping fixed effects")
-        return
+        logger.error(
+            "No successful runs; refreshing exclusions to retire old fixed effects"
+        )
 
     if failed_runs:
+        exclusions = set(exclusions)
+        for failed in failed_runs:
+            session, run = failed.split("/", 1)
+            exclusions.add(
+                _run_base_filename(args.subj_id, session, args.task_name, run)
+            )
         logger.warning(
             "Computing fixed effects on %d/%d successful runs (partial)",
             successful_runs,
@@ -541,7 +605,9 @@ def compute_fixed_effects_all(
                     smoothing_fwhm=args.smoothing_fwhm,
                     rt_model=getattr(args, "rt_model", "RTDur"),
                 )
-                logger.info("Fixed effects: %d contrasts (hemi-%s)", len(results), hemisphere)
+                logger.info(
+                    "Fixed effects: %d contrasts (hemi-%s)", len(results), hemisphere
+                )
         else:
             results = compute_subject_fixed_effects(
                 args.subj_id,
@@ -559,3 +625,4 @@ def compute_fixed_effects_all(
             logger.info("Fixed effects: %d contrasts", len(results))
     except Exception as e:
         logger.error("Fixed effects computation failed: %s", e)
+        raise

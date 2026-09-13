@@ -12,7 +12,9 @@ from nilearn.signal import clean as clean_signal
 logger = logging.getLogger(__name__)
 
 
-def surface_residual_filename(base_filename: str, hemisphere: str, surface_space: str) -> str:
+def surface_residual_filename(
+    base_filename: str, hemisphere: str, surface_space: str
+) -> str:
     """Canonical filename for a per-run surface task-residual GIFTI.
 
     Single source of truth shared by the writer (:func:`process_surface_residuals`)
@@ -53,7 +55,25 @@ class ResidualsProcessor:
             >>> residuals = processor.get_raw_residuals()
         """
         if self.raw_residuals is None:
-            self.raw_residuals = self.fitted_glm.residuals
+            residual_images = []
+            for labels, results, design in zip(
+                self.fitted_glm.labels_,
+                self.fitted_glm.results_,
+                self.fitted_glm.design_matrices_,
+                strict=True,
+            ):
+                # In Nilearn 0.14, RegressionResults.predicted uses the
+                # whitened design while .residuals subtracts it from raw Y.
+                # Reconstruct Y - X beta explicitly, as in SurfaceGLM.
+                values = np.empty((len(design), len(labels)), dtype=np.float64)
+                for label, result in results.items():
+                    values[:, labels == label] = (
+                        result.Y - design.to_numpy() @ result.theta
+                    )
+                residual_images.append(
+                    self.fitted_glm.masker_.inverse_transform(values)
+                )
+            self.raw_residuals = residual_images
 
         return self.raw_residuals
 
@@ -87,26 +107,21 @@ class ResidualsProcessor:
         if not raw_residuals:
             raise ValueError("No residuals available from GLM")
 
-        self.filtered_residuals = []
-
-        for i, residual_img in enumerate(raw_residuals):
-            try:
-                filtered_img = clean_img(
-                    residual_img,
-                    low_pass=low_pass,
-                    high_pass=high_pass,
-                    t_r=self.tr,
-                    standardize=standardize,
-                    detrend=detrend,
-                    confounds=confounds,
-                    mask_img=mask_img,
-                )
-                self.filtered_residuals.append(filtered_img)
-
-            except Exception as e:
-                logger.warning("Failed to filter residuals for run %d: %s", i + 1, e)
-                # Use unfiltered residuals as fallback
-                self.filtered_residuals.append(residual_img)
+        # A failed filter must never be saved under the filtered-output name.
+        self.filtered_residuals = None
+        self.filtered_residuals = [
+            clean_img(
+                residual_img,
+                low_pass=low_pass,
+                high_pass=high_pass,
+                t_r=self.tr,
+                standardize=standardize,
+                detrend=detrend,
+                confounds=confounds,
+                mask_img=mask_img,
+            )
+            for residual_img in raw_residuals
+        ]
 
         return self.filtered_residuals
 
@@ -133,7 +148,9 @@ class ResidualsProcessor:
 
         if residuals_type == "filtered":
             if self.filtered_residuals is None:
-                raise ValueError("Filtered residuals not available. Call apply_filtering() first.")
+                raise ValueError(
+                    "Filtered residuals not available. Call apply_filtering() first."
+                )
             residuals_to_save = self.filtered_residuals
             suffix = "task-regressed-residuals"
         elif residuals_type == "raw":
@@ -245,11 +262,17 @@ def process_cifti_residuals(
         residuals = surface_glm.get_residuals()  # (T, n_grayordinates)
         if low_pass is not None or high_pass is not None or fc_confounds is not None:
             residuals = clean_signal(
-                residuals, t_r=tr, low_pass=low_pass, high_pass=high_pass,
-                confounds=fc_confounds, standardize=False, detrend=False,
+                residuals,
+                t_r=tr,
+                low_pass=low_pass,
+                high_pass=high_pass,
+                confounds=fc_confounds,
+                standardize=False,
+                detrend=False,
             )
         out_path = write_dtseries(
-            residuals.astype(np.float32), template,
+            residuals.astype(np.float32),
+            template,
             output_dir / cifti_residual_filename(base_filename),
         )
         result["saved_path"] = out_path
@@ -407,7 +430,9 @@ def process_surface_residuals(
         ]
         gii_img = nib.GiftiImage(darrays=darrays)
 
-        out_path = output_dir / surface_residual_filename(base_filename, hemisphere, surface_space)
+        out_path = output_dir / surface_residual_filename(
+            base_filename, hemisphere, surface_space
+        )
         nib.save(gii_img, out_path)
         result["saved_path"] = out_path
         logger.info("Saved surface residuals: %s", out_path)

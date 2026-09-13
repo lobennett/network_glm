@@ -66,11 +66,17 @@ def setup_logging(verbose: bool = False) -> None:
 
 def get_parser() -> argparse.ArgumentParser:
     """Create command line argument parser."""
-    parser = argparse.ArgumentParser(description="Level 1 GLM Analysis for Network R01 dataset")
+    parser = argparse.ArgumentParser(
+        description="Level 1 GLM Analysis for Network R01 dataset"
+    )
     parser.add_argument("--subj-id", type=str, required=True, help="Subject ID")
     parser.add_argument("--task-name", type=str, required=True, help="Task name")
-    parser.add_argument("--bids-dir", type=str, required=True, help="BIDS directory path")
-    parser.add_argument("--fmriprep-dir", type=str, required=True, help="fMRIPrep directory path")
+    parser.add_argument(
+        "--bids-dir", type=str, required=True, help="BIDS directory path"
+    )
+    parser.add_argument(
+        "--fmriprep-dir", type=str, required=True, help="fMRIPrep directory path"
+    )
     parser.add_argument(
         "--results-dir",
         type=str,
@@ -118,7 +124,7 @@ def get_parser() -> argparse.ArgumentParser:
         "--skip-existing",
         action="store_true",
         default=False,
-        help="Skip runs where residual files already exist (useful for resuming)",
+        help="Reuse completed runs only when code, settings, inputs, and outputs match",
     )
     parser.add_argument(
         "--fc-confounds",
@@ -130,7 +136,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-residual-filter",
         action="store_true",
-        help="Emit residuals WITHOUT the 0.01-0.1 Hz band-pass (fsLR/CIFTI path); "
+        help="Emit residuals WITHOUT the 0.01-0.1 Hz band-pass in any analysis space; "
         "defer temporal filtering to downstream (e.g. XCP-D).",
     )
     parser.add_argument(
@@ -151,7 +157,8 @@ def get_parser() -> argparse.ArgumentParser:
         "RTepoch is a Grinband-style variable epoch -- no RT regressor, and each condition "
         "carries duration = RT; it does not apply to the inhibition tasks, whose stop/nogo "
         "trials have no response. Each arm is recorded in the rtmodel- entity of every "
-        "output filename, so arms can share a results tree.",
+        "contrast filename. Use a separate results directory for each arm to preserve "
+        "its residuals, QC files, and provenance.",
     )
     parser.add_argument(
         "--mni-template",
@@ -275,8 +282,8 @@ def main(argv=None):
     # setup_analysis still returns expected_sessions/exclusions_by_type; they are
     # not consumed downstream (the active exclusion set is `exclusions`), so bind
     # them to throwaways here rather than thread dead args onward.
-    config, sample_type, _expected_sessions, exclusions, _exclusions_by_type, dirs = setup_analysis(
-        args
+    config, sample_type, _expected_sessions, exclusions, _exclusions_by_type, dirs = (
+        setup_analysis(args)
     )
 
     # File discovery

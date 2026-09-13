@@ -10,6 +10,7 @@ import nibabel as nib
 import numpy as np
 from nilearn.glm.contrasts import compute_fixed_effects
 
+from network_glm.lev1 import cache
 from network_glm.lev1.processing.imaging import cast_nifti_to_float32
 from network_glm.lev1.processing.surface_data import (
     SurfaceResult,
@@ -31,7 +32,10 @@ def compute_mean_run_z(z_files: list[Path], is_surface: bool = False) -> Any:
         raise ValueError("At least one per-run Z map is required")
 
     if is_surface:
-        arrays = [np.asarray(load_surface_stat_map(path), dtype=np.float64) for path in z_files]
+        arrays = [
+            np.asarray(load_surface_stat_map(path), dtype=np.float64)
+            for path in z_files
+        ]
         template = None
     else:
         images = [nib.load(str(path)) for path in z_files]
@@ -131,12 +135,8 @@ class FixedEffectsAnalyzer:
             file_ext = ".func.gii"
             # The wildcard after hemi-H_ accepts current names with a space
             # entity and legacy names without one.
-            effect_pattern = (
-                f"*hemi-{self.hemisphere}_*contrast-{contrast_name}_*stat-effect-size{file_ext}"
-            )
-            variance_pattern = (
-                f"*hemi-{self.hemisphere}_*contrast-{contrast_name}_*stat-variance{file_ext}"
-            )
+            effect_pattern = f"*hemi-{self.hemisphere}_*contrast-{contrast_name}_*stat-effect-size{file_ext}"
+            variance_pattern = f"*hemi-{self.hemisphere}_*contrast-{contrast_name}_*stat-variance{file_ext}"
         else:
             file_ext = ".nii.gz"
             # Pattern for volumetric files
@@ -221,7 +221,7 @@ class FixedEffectsAnalyzer:
 
         # Create exclusion key with task- prefix (matching run_lev1.py format)
         if all(k in components for k in ["subject", "session", "run"]):
-            return f'{components["subject"]}_{components["session"]}_task-{self.task_name}_{components["run"]}'
+            return f"{components['subject']}_{components['session']}_task-{self.task_name}_{components['run']}"
 
         return filename  # Fallback to filename if parsing fails
 
@@ -249,13 +249,10 @@ class FixedEffectsAnalyzer:
             ... )
         """
         if len(effect_files) != len(variance_files):
-            logger.error(
-                "File count mismatch for %s: %d effects, %d variances",
-                contrast_name,
-                len(effect_files),
-                len(variance_files),
+            raise ValueError(
+                f"File count mismatch for {contrast_name}: "
+                f"{len(effect_files)} effects, {len(variance_files)} variances"
             )
-            return None, None, None
 
         if not effect_files:
             logger.warning("No files found for contrast %s", contrast_name)
@@ -293,7 +290,11 @@ class FixedEffectsAnalyzer:
                 fixed_variance_img = _result[1]
                 fixed_stat_img = _result[3] if len(_result) >= 4 else _result[2]
 
-            logger.info("Fixed effects for %s: %d runs included", contrast_name, len(effect_files))
+            logger.info(
+                "Fixed effects for %s: %d runs included",
+                contrast_name,
+                len(effect_files),
+            )
 
             # Store results
             self.contrast_results[contrast_name] = {
@@ -307,10 +308,11 @@ class FixedEffectsAnalyzer:
             return fixed_effect_img, fixed_variance_img, fixed_stat_img
 
         except Exception as e:
-            logger.error("Fixed effects failed for %s: %s", contrast_name, e)
-            return None, None, None
+            raise RuntimeError(f"Fixed effects failed for {contrast_name}: {e}") from e
 
-    def _build_base_filename(self, contrast_name: str) -> str:
+    def _build_base_filename(
+        self, contrast_name: str, *, below_min: bool | None = None
+    ) -> str:
         """Construct the BIDS-style base filename for this contrast's saved maps.
 
         Applies the `_desc-belowMinRuns` tag when this contrast's n_runs is
@@ -324,8 +326,8 @@ class FixedEffectsAnalyzer:
             hemi_tag = ""
             space_tag = ""
 
-        n_runs = self.contrast_results[contrast_name]["n_runs"]
-        below_min = n_runs < self.min_runs
+        if below_min is None:
+            below_min = self.contrast_results[contrast_name]["n_runs"] < self.min_runs
         below_min_tag = "_desc-belowMinRuns" if below_min else ""
 
         return (
@@ -335,6 +337,27 @@ class FixedEffectsAnalyzer:
             f"_rtmodel-{self.rt_model}{below_min_tag}"
             f"_stat-fixed-effects"
         )
+
+    def retire_contrast_outputs(self, contrast_name: str, output_dir: Path) -> None:
+        """Retire both eligibility variants before refreshing this contrast."""
+        extension = ".func.gii" if self.hemisphere is not None else ".nii.gz"
+        paths = []
+        for below_min in (False, True):
+            base = self._build_base_filename(contrast_name, below_min=below_min)
+            paths.extend(
+                Path(output_dir) / (base + suffix)
+                for suffix in (
+                    extension,
+                    "-variance" + extension,
+                    "-z_score" + extension,
+                    ".json",
+                )
+            )
+            paths.append(
+                Path(output_dir)
+                / (base.replace("_stat-fixed-effects", "_stat-meanRunZ") + extension)
+            )
+        cache.retire_outputs(paths)
 
     def _metadata(
         self,
@@ -355,7 +378,9 @@ class FixedEffectsAnalyzer:
         relevant_prefix = f"{self.subject_id}_"
         relevant_task = f"_task-{self.task_name}_"
         scan_exclusions = sorted(
-            key for key in exclusions if key.startswith(relevant_prefix) and relevant_task in key
+            key
+            for key in exclusions
+            if key.startswith(relevant_prefix) and relevant_task in key
         )
         per_contrast_exclusions = sorted(
             key
@@ -411,7 +436,9 @@ class FixedEffectsAnalyzer:
             ... )
         """
         if contrast_name not in self.contrast_results:
-            raise ValueError(f"Fixed effects for {contrast_name} have not been computed")
+            raise ValueError(
+                f"Fixed effects for {contrast_name} have not been computed"
+            )
 
         results = self.contrast_results[contrast_name]
         output_dir = Path(output_dir)
@@ -428,7 +455,8 @@ class FixedEffectsAnalyzer:
         n_runs = self.contrast_results[contrast_name]["n_runs"]
         if n_runs < self.min_runs:
             logger.warning(
-                "tagged %s/task-%s/contrast-%s as _desc-belowMinRuns: " "n_runs=%d (min_runs=%d)",
+                "tagged %s/task-%s/contrast-%s as _desc-belowMinRuns: "
+                "n_runs=%d (min_runs=%d)",
                 self.subject_id,
                 self.task_name,
                 contrast_name,
@@ -445,27 +473,29 @@ class FixedEffectsAnalyzer:
 
         if results["fixed_effect"] is not None:
             effect_path = output_dir / f"{base_filename}{file_ext}"
-            cast_nifti_to_float32(results["fixed_effect"], is_surface=is_surface).to_filename(
-                effect_path
-            )
+            cast_nifti_to_float32(
+                results["fixed_effect"], is_surface=is_surface
+            ).to_filename(effect_path)
             saved_files["fixed_effect"] = effect_path
 
         if results["fixed_variance"] is not None:
             variance_path = output_dir / f"{base_filename}-variance{file_ext}"
-            cast_nifti_to_float32(results["fixed_variance"], is_surface=is_surface).to_filename(
-                variance_path
-            )
+            cast_nifti_to_float32(
+                results["fixed_variance"], is_surface=is_surface
+            ).to_filename(variance_path)
             saved_files["fixed_variance"] = variance_path
 
         if results["fixed_stat"] is not None:
             stat_path = output_dir / f"{base_filename}-z_score{file_ext}"
-            cast_nifti_to_float32(results["fixed_stat"], is_surface=is_surface).to_filename(
-                stat_path
-            )
+            cast_nifti_to_float32(
+                results["fixed_stat"], is_surface=is_surface
+            ).to_filename(stat_path)
             saved_files["fixed_stat"] = stat_path
 
         z_files = [
-            Path(path).with_name(Path(path).name.replace("stat-effect-size", "stat-z_score"))
+            Path(path).with_name(
+                Path(path).name.replace("stat-effect-size", "stat-z_score")
+            )
             for path in results["input_files"]["effects"]
         ]
         missing_z = [path for path in z_files if not path.is_file()]
@@ -523,16 +553,21 @@ class FixedEffectsAnalyzer:
         exclusions = exclusions or set()
         contrast_exclusions = contrast_exclusions or set()
 
+        for contrast_name in contrasts:
+            self.retire_contrast_outputs(contrast_name, output_dir)
+
         for contrast_name, contrast_formula in contrasts.items():
             # Find files for this contrast
             effect_files, variance_files = self.find_contrast_files(
                 contrast_dir, contrast_name, exclusions, contrast_exclusions
             )
 
-            if effect_files and variance_files:
+            if effect_files or variance_files:
                 # Compute fixed effects
-                fixed_effect, fixed_variance, fixed_stat = self.compute_fixed_effects_contrast(
-                    contrast_name, effect_files, variance_files
+                fixed_effect, fixed_variance, fixed_stat = (
+                    self.compute_fixed_effects_contrast(
+                        contrast_name, effect_files, variance_files
+                    )
                 )
 
                 if fixed_effect is not None:
