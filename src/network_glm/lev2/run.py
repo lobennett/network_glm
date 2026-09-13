@@ -13,7 +13,6 @@ import json
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -313,7 +312,10 @@ def run_level2_analysis(
     stamping a success provenance manifest). Invalid input identities/maps raise
     ValueError before outputs are created. Failed attempts and prior successful
     directories remain available for inspection. Provenance is staged with the
-    products, including for direct callers; CLI arguments supply fuller context.
+    products before publication when ``provenance_args`` carries a real
+    invocation (``main`` always passes its parsed CLI args); a direct library
+    call that supplies none simply gets no ``run-manifest.json`` rather than one
+    describing an invocation that never happened.
 
     ``seed`` pins FSL randomise's permutation RNG for reproducibility. It is
     forwarded only if the installed ``setup_randomise_tfce`` accepts a ``seed``
@@ -336,7 +338,10 @@ def run_level2_analysis(
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     contrast_output_dir = output_dir / contrast_name
-    attempt_dir = Path(tempfile.mkdtemp(prefix=f".{contrast_name}.attempt-", dir=output_dir))
+    attempt_dir = output_dir / f".{contrast_name}.attempt-{uuid4().hex}"
+    # Plain mkdir so the published directory keeps the umask-derived mode the
+    # contrast directory has always had; tempfile.mkdtemp would force 0700.
+    attempt_dir.mkdir()
     print(f"Attempt directory (retained on failure): {attempt_dir}")
     group_mask_path = attempt_dir / "group_mask.nii.gz"
     group_mask_img.to_filename(group_mask_path)
@@ -404,13 +409,8 @@ def run_level2_analysis(
         print(f"✗ Invalid FSL randomise products: {exc}")
         return False
 
-    if provenance_args is None:
-        provenance_args = argparse.Namespace(
-            contrast=contrast_name, space="volume", mask_threshold=mask_threshold,
-            num_permutations=num_permutations, seed=seed, output_dir=str(output_dir),
-            allow_dirty=True,
-        )
-    _write_lev2_provenance(attempt_dir, provenance_args, level1_dirs or [], input_files)
+    if provenance_args is not None:
+        _write_lev2_provenance(attempt_dir, provenance_args, level1_dirs or [], input_files)
 
     # The helper writes absolute preparation paths. Relocate those paths so the
     # published script still refers to its own mask/design/data, keeping all flags.
@@ -418,6 +418,7 @@ def run_level2_analysis(
     script.write_text(script.read_text().replace(str(attempt_dir), str(contrast_output_dir)))
     previous = None
     if contrast_output_dir.exists():
+        attempt_dir.chmod(contrast_output_dir.stat().st_mode & 0o7777)
         previous = output_dir / f".{contrast_name}.previous-{uuid4().hex}"
         contrast_output_dir.rename(previous)
     try:

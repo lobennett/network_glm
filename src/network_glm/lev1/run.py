@@ -29,20 +29,23 @@ from network_glm.lev1.spaces import is_cifti_space, is_surface_space
 
 logger = logging.getLogger(__name__)
 
-# fMRIPrep/BIDS file-type keys (in the discovered `files` dict) that represent
-# ACTUAL study inputs consumed by the GLM, and should be hashed into the
-# run-manifest, including the fMRIPrep masks consumed by fits and aggregation.
-_INPUT_FILE_KEYS = (
-    "events",
-    "confounds",
-    "mni_data",
-    "t1w_data",
-    "left_surface",
-    "right_surface",
-    "cifti_bold",
-    "mni_brain_mask",
-    "t1w_brain_mask",
-)
+
+def _consumed_file_keys(space):
+    """Keys in the discovered ``files`` dict that the fit for ``space`` reads.
+
+    ``FileFinder.get_files`` stores every pattern it matches, so a run's dict
+    routinely carries BOLD/masks for spaces this invocation never touched.
+    Returns ``(keys, timing_key)`` where ``timing_key`` is the BOLD whose
+    sidecar ``process_single_run`` reads for the slice-timing reference.
+    """
+    if is_cifti_space(space):
+        timing_key, extra = "cifti_bold", ()
+    elif is_surface_space(space):
+        timing_key, extra = "left_surface", ("right_surface",)
+    else:
+        timing_key = f"{space.lower()}_data"
+        extra = (f"{space.lower()}_brain_mask",)
+    return ("events", "confounds", timing_key, *extra), timing_key
 
 
 def _positive_int(value: str) -> int:
@@ -210,35 +213,31 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _collect_run_inputs(files, *, combined_mask_path=None):
+def _collect_run_inputs(files, space, *, combined_mask_path=None):
     """Flatten the discovered ``files`` dict into the list of ACTUAL inputs.
 
     ``files`` is ``{session: {run: {file_type: Path}}}`` (see
-    :class:`~network_glm.io.file_discovery.FileFinder`). We hash the
-    study inputs the GLM actually consumes — events, confounds, and the BOLD
-    timeseries for whichever space ran (``mni_data`` / ``t1w_data`` /
-    ``left_surface`` + ``right_surface`` / ``cifti_bold``), fMRIPrep brain masks,
-    and the timing sidecar read by ``process_single_run``. Surface timing is
-    read from the left hemisphere only. The combined mask is a consumed
-    fixed-effects intermediate, included when one was created.
+    :class:`~network_glm.io.file_discovery.FileFinder`). We hash only what the
+    GLM for ``space`` consumes — events, confounds, that space's BOLD and
+    fMRIPrep brain mask, and the timing sidecar ``process_single_run`` read.
+    Surface timing is read from the left hemisphere only. The combined mask is
+    a consumed fixed-effects intermediate, included when one was created.
 
     Returns a de-duplicated, deterministically sorted list of Paths.
     """
+    keys, timing_key = _consumed_file_keys(space)
     collected: set = set()
     for runs in files.values():
         for run_files in runs.values():
-            for key in _INPUT_FILE_KEYS:
+            for key in keys:
                 path = run_files.get(key)
                 if path is not None:
                     collected.add(Path(path))
-            # Match the runner's timing source; do not imply that the unused
-            # right-hemisphere sidecar controlled the fit.
-            for key in ("cifti_bold", "left_surface", "mni_data", "t1w_data"):
-                if key in run_files:
-                    sidecar = sidecar_path_for(run_files[key])
-                    if sidecar.is_file():
-                        collected.add(sidecar)
-                    break
+            timing_bold = run_files.get(timing_key)
+            if timing_bold is not None:
+                sidecar = sidecar_path_for(timing_bold)
+                if sidecar.is_file():
+                    collected.add(sidecar)
     if combined_mask_path is not None:
         collected.add(Path(combined_mask_path))
     return sorted(collected, key=str)
@@ -379,7 +378,7 @@ def main(argv=None):
         Path(args.results_dir),
         args,
         dirs,
-        _collect_run_inputs(files, combined_mask_path=combined_mask_path),
+        _collect_run_inputs(files, args.space, combined_mask_path=combined_mask_path),
     )
 
     # Summary
