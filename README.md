@@ -160,6 +160,15 @@ contrasts live in `src/network_glm/task_config/tasks/<task>.yaml`.
 Battery order is canonical — `--all` / `--base-tasks` / `--dual-tasks` resolution
 depends on it. Do not reorder without a behavior-preserving audit.
 
+Historical go/no-go designs (RTDur and noRT) may include non-trial rows in
+`go_omission` or `nogo_success` when `break` or
+`break_with_performance_feedback` rows retain a `go` or `nogo_success` condition
+label. Go-labeled breaks also affected the go-trial junk fraction and could affect
+run exclusion. These paths now require `trial_id == 'test_trial'`, preserving
+genuine omissions and successful no-go trials. Publishing or installing this
+correction does not regenerate existing participant designs, fits, or residuals;
+reprocessing historical outputs requires a separate, explicit rerun.
+
 ## Outputs
 
 `lev1` writes per subject × task under `--results-dir`:

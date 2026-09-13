@@ -143,6 +143,10 @@ def define_nuisance_trials(events_df: pd.DataFrame, task: str) -> dict[str, pd.S
         trial_filter = events_df.trial_id == "test_trial"
     elif task in go_trial_tasks:
         trial_filter = events_df.trial_type == "go"
+        if task == "goNogo":
+            # Break rows can retain a go label; only behavioral trials belong
+            # in nuisance flags and the go-trial junk-rate denominator.
+            trial_filter &= events_df.trial_id == "test_trial"
     elif task in stop_dual_tasks:
         trial_filter = events_df.trial_type.astype(str).str.startswith("go")
     else:
