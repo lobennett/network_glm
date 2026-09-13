@@ -65,3 +65,13 @@ def test_bold_timing_sidecar_is_part_of_signature(tmp_path):
         cache.run_signature({"left_surface": bold}, args, {"tr": 1.49}, "discovery")
         != first
     )
+
+
+def test_smoothed_gifti_cannot_reuse_without_external_mesh_identity(tmp_path):
+    bold = tmp_path / "sub-test_bold.func.gii"
+    bold.write_text("BOLD")
+    args = Namespace(space="fsaverage6", smoothing_fwhm=6.0)
+    run_files = {"left_surface": bold, "right_surface": bold}
+    assert cache.run_signature(run_files, args, {}, "discovery") is None
+    args.smoothing_fwhm = None
+    assert cache.run_signature(run_files, args, {}, "discovery") is not None

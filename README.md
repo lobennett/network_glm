@@ -14,8 +14,9 @@ uv run pytest
 
 No container: this is a library, installed as a pinned dependency of
 [network_fmri](https://github.com/lobennett/network_fmri), which owns Slurm submission for every
-stage. Run the models from there. `pillow<12` is the one hard pin — pillow 12 needs libjpeg headers
-Sherlock lacks.
+stage. Run the models from there. The numerical stack is pinned; Nilearn 0.14.1 avoids
+the withdrawn 0.14.0 integer-image precision bug. `pillow<12` avoids libjpeg build
+requirements on Sherlock.
 
 FSL (`lev2` volume randomise) and FreeSurfer (surface smoothing via `mri_surf2surf`) are external
 licensed tools, never bundled. network_fmri `module load`s them on the host, and only when a run
@@ -128,6 +129,16 @@ well as runs with residuals. Hashing reads the files; reuse is not a metadata-on
 A change to the exclusion lock or `--min-runs` still refreshes fixed effects without
 refitting unchanged included runs. Old output files without completion records are
 refitted once. A failed or interrupted replacement fit cannot reuse an older receipt.
+
+Smoothed GIFTI runs currently always refit: their external FreeSurfer meshes and
+executable are not yet fingerprinted. Unsmoothed surface, CIFTI, and volume fits can
+use the completion check.
+
+Replacement fits retire prior run contrast maps, and fixed-effects refresh retires
+both normal and below-minimum maps before writing replacements. These files are
+preserved with a terminal `.superseded-<id>` suffix, so level 2 cannot discover them.
+This also prevents dropped contrasts and newly excluded subjects from contributing
+old maps. Archived files remain recoverable; none are automatically deleted.
 
 Use a separate results directory for each scientific configuration. Contrast filenames
 include the RT arm, but residual, QC, and subject-manifest filenames are shared within

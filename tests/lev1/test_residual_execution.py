@@ -14,6 +14,7 @@ from network_glm.lev1.processing.residuals import (
     process_run_residuals,
 )
 from network_glm.lev1.processing.surface_data import SurfaceGLM
+from network_glm.lev1.processing.glm import fit_run_glm
 from network_glm.lev1.processing.contrasts import compute_run_contrasts
 
 
@@ -171,6 +172,31 @@ def test_surface_residual_subtraction_preserves_small_fluctuations():
     np.testing.assert_allclose(model.get_residuals(), expected, atol=1e-9)
 
 
+def test_integer_storage_does_not_quantize_smoothed_glm_inputs():
+    """The same values stored as int16 or float64 must produce the same fit."""
+    rng = np.random.default_rng(23)
+    n_scans = 60
+    design = pd.DataFrame({"task": rng.normal(size=n_scans), "constant": 1.0})
+    signal = 1000 + design.to_numpy() @ rng.normal(size=(2, 27)) * 5
+    data = (signal + rng.normal(size=signal.shape)).T.reshape(3, 3, 3, n_scans)
+    integer_data = data.astype(np.int16)
+    mask = nib.Nifti1Image(np.ones((3, 3, 3), dtype=np.uint8), np.eye(4))
+    estimates = []
+    for values in (integer_data, integer_data.astype(np.float64)):
+        model = fit_run_glm(
+            nib.Nifti1Image(values, np.eye(4)),
+            design,
+            smoothing_fwhm=1.5,
+            mask_img=mask,
+        )
+        estimates.append(
+            model.compute_contrast("task", output_type="effect_size").get_fdata()
+        )
+    # Nilearn smooths int16 images in float32, but retains float64 for the
+    # reference. Allow that rounding, not the ~0.008 quantization error in 0.14.0.
+    np.testing.assert_allclose(estimates[0], estimates[1], rtol=0, atol=1e-6)
+
+
 def test_missing_requested_contrast_fails_instead_of_returning_partial_success(
     tmp_path,
 ):
@@ -213,8 +239,9 @@ def test_fixed_effect_failure_is_not_reported_as_success(tmp_path, monkeypatch):
         )
 
 
+@pytest.mark.parametrize("run_count", [1, 2])
 def test_failed_runs_cannot_contribute_stale_maps_to_fixed_effects(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, run_count
 ):
     included_exclusions = set()
 
@@ -238,7 +265,7 @@ def test_failed_runs_cannot_contribute_stale_maps_to_fixed_effects(
         set(),
         None,
         ["ses-1/run-1"],
-        2,
+        run_count,
     )
     assert "sub-test_ses-1_task-flanker_run-1" in included_exclusions
 
@@ -299,6 +326,16 @@ def test_surface_run_completion_controls_resume(surface_run, monkeypatch):
     monkeypatch.setattr(runner, "process_surface_run", unexpected_refit)
     args.skip_existing = True
     assert run()
+    contrast_dir = surface_run["dirs"]["indiv_contrasts"]
+    obsolete = contrast_dir / (
+        "sub-test_ses-1_task-flanker_run-1_hemi-L_space-fsaverage6"
+        "_contrast-dropped_rtmodel-RTDur_stat-effect-size.func.gii"
+    )
+    obsolete.write_text("old contrast")
     args.no_residual_filter = True
     with pytest.raises(RuntimeError, match="refit requested"):
         run()
+    assert not obsolete.exists()
+    archived = list(contrast_dir.glob(obsolete.name + ".superseded-*"))
+    assert len(archived) == 1
+    assert archived[0].read_text() == "old contrast"

@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+from uuid import uuid4
 
 from network_glm import provenance
 from network_glm.acquisition import sidecar_path_for
@@ -21,6 +22,14 @@ _EXECUTION_ARGS = {
 _BOLD_KEYS = {"mni_data", "t1w_data", "left_surface", "right_surface", "cifti_bold"}
 
 
+def retire_outputs(paths) -> None:
+    """Preserve obsolete maps with a suffix that excludes them from discovery."""
+    suffix = f".superseded-{uuid4().hex}"
+    for path in paths:
+        if path.is_file():
+            path.rename(path.with_name(path.name + suffix))
+
+
 def run_signature(run_files, args, task_params, sample_type) -> str | None:
     """Hash scientific settings, actual package source, dependencies, and inputs.
 
@@ -29,6 +38,12 @@ def run_signature(run_files, args, task_params, sample_type) -> str | None:
     Missing inputs make a run ineligible for reuse; normal input validation then
     reports the missing file to the caller.
     """
+    if {"left_surface", "right_surface"} & run_files.keys() and getattr(
+        args, "smoothing_fwhm", None
+    ) is not None:
+        # mri_surf2surf also consumes external meshes and an executable that are
+        # not in run_files. Refit until those dependencies have an input contract.
+        return None
     inputs = {Path(path).resolve() for path in run_files.values()}
     for key in _BOLD_KEYS & run_files.keys():
         sidecar = sidecar_path_for(run_files[key])

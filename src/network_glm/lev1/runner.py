@@ -343,6 +343,18 @@ def process_single_run(
         )
         return True
     cache.mark_running(completion)
+    if not is_cifti_space(args.space):
+        prefix = run_key
+        extension = ".nii.gz"
+        if is_surface_space(args.space):
+            prefix += f"_hemi-*_space-{resolve_surface_space(args.space)}"
+            extension = ".func.gii"
+        rt_model = getattr(args, "rt_model", "RTDur")
+        cache.retire_outputs(
+            dirs["indiv_contrasts"].glob(
+                f"{prefix}_contrast-*_rtmodel-{rt_model}_stat-*{extension}"
+            )
+        )
 
     logger.info("Processing %s/%s...", session, run)
 
@@ -549,8 +561,9 @@ def compute_fixed_effects_all(
     # Compute fixed effects on available successful runs (partial run support)
     successful_runs = run_count - len(failed_runs)
     if successful_runs == 0:
-        logger.error("No successful runs - skipping fixed effects")
-        return
+        logger.error(
+            "No successful runs; refreshing exclusions to retire old fixed effects"
+        )
 
     if failed_runs:
         exclusions = set(exclusions)

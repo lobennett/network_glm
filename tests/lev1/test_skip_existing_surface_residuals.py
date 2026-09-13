@@ -59,9 +59,7 @@ def test_legacy_surface_residuals_without_completion_are_not_reused(tmp_path):
     for hemi in ("L", "R"):
         (tmp_path / surface_residual_filename(base, hemi, "fsaverage6")).write_text("x")
 
-    # Empty run_files: if the skip-check fails to match, process_single_run
-    # falls through and raises ValueError on missing surface files. A correct
-    # skip returns True before touching run_files.
+    # Empty run_files: refusing legacy reuse must reach normal input validation.
     with pytest.raises(ValueError, match="Missing surface files"):
         runner.process_single_run(
             session,
@@ -69,7 +67,7 @@ def test_legacy_surface_residuals_without_completion_are_not_reused(tmp_path):
             {},
             args,
             sample_type="validation",
-            dirs={"task_residuals": tmp_path},
+            dirs={"task_residuals": tmp_path, "indiv_contrasts": tmp_path},
             task_params={"tr": 1.49},
             exclusions=set(),
         )

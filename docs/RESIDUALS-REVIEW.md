@@ -36,13 +36,22 @@ are not directly interchangeable.
 | High | Surface/CIFTI failure dictionaries were ignored; volume filtering could substitute raw data and label it filtered. | Propagate failures; never substitute an unfiltered series after a filtering error. |
 | High | The pinned Nilearn 0.14 volume residual accessor subtracts a prediction based on `whitened_design` from original Y. | Reconstruct volume residuals explicitly from original X and per-voxel beta. This changes volume residuals, not fitted contrasts. |
 | High | `--skip-existing` checked residual filenames alone, allowing changed models or damaged outputs to be reused. | Require an atomic completion record matching source, dependency versions, model settings, input hashes, and output hashes. Legacy files are refitted once. |
+| High | Nilearn 0.14.0 was yanked because maskers cast cleaned integer-image signals back to integers. | Pin the corrected 0.14.1 release and verify that identical int16/float64 inputs yield the same smoothed GLM estimates. |
 | High | Contrast and fixed-effects exceptions could be logged while execution continued as successful. Failed runs could leave old maps available for aggregation. | Fail on requested-output errors and exclude failed run identities from fixed effects. |
+| High | Refits could leave old dropped-contrast maps; exclusion refresh could leave eligible fixed-effects maps when the current result was below the run minimum or absent. | Retire exact output families with recoverable `.superseded-<id>` suffixes before replacing them. Test with real GIFTI maps and changed exclusions. |
 | Moderate | Surface predictions were cast to the input float32 dtype before subtracting the large baseline. | Subtract in float64, then cast when writing GIFTI/CIFTI. |
 | Moderate | `--no-residual-filter` worked only for CIFTI. | Honor it for volume and GIFTI as well. |
 
 The changes preserve the AR(1) estimator, task design, confound arms, and default
 filter cutoffs. `fit_run_glm` now has one shared parameter dictionary; retaining
 results is the only task-versus-residual configuration difference.
+
+The dependency correction follows the
+[Nilearn 0.14.1 release notes](https://nilearn.github.io/stable/changes/whats_new.html#version-0-14-1).
+The regression test failed on 0.14.0 with a maximum effect-map difference of `0.00814`
+between identical values stored as int16 and float64. With 0.14.1 the difference is
+below `1e-6`, consistent with the float32 smoothing used for int16 images. This is
+separate from the original-coordinate residual reconstruction fix.
 
 ## Numerical verification
 
@@ -97,6 +106,13 @@ Use new result directories when comparing scientific configurations or corrected
 residual outputs. The completion records support safe resumption and exclusion-driven
 fixed-effects refresh; they do not preserve multiple configurations under shared
 residual/QC filenames. Keep the old outputs for a paired audit before a cohort rerun.
+
+Smoothed GIFTI fits deliberately do not reuse completion records until consumed
+FreeSurfer geometry and executable identity can be fingerprinted. Prior contrast and
+fixed-effects maps are preserved with terminal `.superseded-<id>` suffixes that are
+excluded from level-2 discovery, including when no eligible runs remain. Inner
+aggregation errors and missing variance pairs now fail visibly rather than returning
+empty results that could conceal a failed refresh.
 
 Before using existing FC outputs, inspect their actual flags, hemisphere coverage,
 timepoint counts, timing alignment, finite/medial-wall vertices, confound availability,
