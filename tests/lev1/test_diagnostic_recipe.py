@@ -79,6 +79,9 @@ def test_recipe_exports_only_requested_coefficients_without_changing_fit(
     expected = TASK_COEFFICIENTS[task]
     if arm == "noRT" and "response_time" in expected:
         expected = {}
+        assert "response_time" not in regressors
+        assert set(namespace["skipped"]) == {"response_time"}
+        assert "response_time" in namespace["skipped"]["response_time"]
     assert saved.keys() == expected.keys()
     if not expected:
         assert not namespace["diagnostic_dir"].exists()
@@ -105,8 +108,13 @@ def test_recipe_exports_only_requested_coefficients_without_changing_fit(
 def test_recipe_rtepoch_has_no_pooled_rt_map(tmp_path, task):
     namespace, _ = _example(tmp_path, task, "RTepoch")
     saved = _run_recipe(namespace)
-    expected = TASK_COEFFICIENTS[task] if task != "directedForgettingWFlanker" else {}
+    rt_only = task == "directedForgettingWFlanker"
+    expected = {} if rt_only else TASK_COEFFICIENTS[task]
     assert saved.keys() == expected.keys()
+    if rt_only:
+        assert "response_time" not in get_regressor_config(task, "RTepoch")
+        assert set(namespace["skipped"]) == {"response_time"}
+        assert not namespace["diagnostic_dir"].exists()
 
 
 def test_recipe_skips_dropped_columns(tmp_path):

@@ -72,8 +72,6 @@ extra = {
 if rt_model not in RT_MODELS:
     raise ValueError(f"Unknown rt_model: {rt_model!r}")
 requested = extra[task_name].copy()
-if rt_model != "RTDur":
-    requested.pop("response_time", None)
 missing = sorted(set(requested.values()) - set(design_columns))
 selected, skipped = filter_contrasts_for_dropped_columns(requested, missing)
 
@@ -98,8 +96,11 @@ print("Skipped absent columns:", skipped)
 `saved` contains effect-size, variance and z-score paths for each selected map.
 If no requested coefficient is available, no directory is created. A dropped
 column skips its contrast; the recipe never restores a regressor or alters the
-fit. RT-only dual-task requests under noRT/RTepoch produce no maps. An unknown
-task is rejected by the explicit mapping rather than falling back to defaults.
+fit. The fitted design's columns are the only selection rule: because noRT and
+RTepoch designs carry no pooled `response_time` regressor, the RT-only dual-task
+requests land in `skipped` under those arms and produce no maps, while `rt_model`
+only labels the arm that the supplied fit already used. An unknown task is
+rejected by the explicit mapping rather than falling back to defaults.
 If export fails partway through, retain that directory for inspection and choose
 a new directory for a retry.
 
@@ -119,10 +120,12 @@ API accepts custom definitions. That separate action still needs correct run and
 contrast exclusions and run-minimum settings. Keep its output outside production:
 level-2 discovery can find additional fixed-effects maps placed in a lev1 tree.
 
-These mappings originated in condition-betas commit
-`861d58795f10ab61d0b93177947949413a482e4f` and dual-response-time-maps commit
-`4d8a9585c4a9ae1992364596718f08eab4e7dd07`. The preserved diagnostic history also
-contains a break-selector experiment, a dated participant launcher and narrow
+These seven mappings come from two exploratory diagnostic efforts — a
+condition-betas exploration and a dual-response-time-maps exploration — that
+were never published to this repository; the definitions above are the whole of
+what they contribute, so nothing here depends on recovering that history.
+Those explorations also
+produced a break-selector experiment, a dated participant launcher and narrow
 event/reliability summaries. They are not prerequisites for this recipe. In
 particular, selecting ordinary breaks instead of feedback-labeled breaks changes
 the fitted design and is a separate scientific-model alternative. This recipe
