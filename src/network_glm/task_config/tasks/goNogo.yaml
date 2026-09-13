@@ -42,7 +42,8 @@ regressors:
   nogo_failure:
     amplitude: 1
     duration: 1
-    subset: "trial_type == 'nogo_failure'"
+    # Break rows can retain this condition label without being no-go trials.
+    subset: "trial_id == 'test_trial' and trial_type == 'nogo_failure'"
 
   response_time:
     amplitude: 1
