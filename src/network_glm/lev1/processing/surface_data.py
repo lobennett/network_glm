@@ -12,7 +12,11 @@ import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn.glm.contrasts import Contrast, compute_contrast, expression_to_contrast_vector
+from nilearn.glm.contrasts import (
+    Contrast,
+    compute_contrast,
+    expression_to_contrast_vector,
+)
 from nilearn.glm.first_level import run_glm
 
 from network_glm.task_config.loader import DUMMY_SCANS
@@ -38,7 +42,9 @@ def get_surface_scan_info(gii_file: str | Path) -> tuple[int, int]:
     return total_scans, n_vertices
 
 
-def load_surface_data(gii_file: str | Path, dummy_scans: int = DUMMY_SCANS) -> np.ndarray:
+def load_surface_data(
+    gii_file: str | Path, dummy_scans: int = DUMMY_SCANS
+) -> np.ndarray:
     """Load surface BOLD data from GIFTI file as numpy array.
 
     Args:
@@ -228,7 +234,9 @@ class SurfaceGLM:
         self.results_ = None
         self.design_matrix_ = None
 
-    def fit(self, surface_data: np.ndarray, design_matrix: pd.DataFrame) -> "SurfaceGLM":
+    def fit(
+        self, surface_data: np.ndarray, design_matrix: pd.DataFrame
+    ) -> "SurfaceGLM":
         """Fit GLM to surface data using nilearn's run_glm.
 
         Uses AR(1) noise model by default to properly account for temporal
@@ -255,7 +263,9 @@ class SurfaceGLM:
 
         # Use nilearn's run_glm with specified noise model
         # AR(1) performs pre-whitening to correct for temporal autocorrelation
-        self.labels_, self.results_ = run_glm(surface_data, X, noise_model=self.noise_model)
+        self.labels_, self.results_ = run_glm(
+            surface_data, X, noise_model=self.noise_model
+        )
 
         return self
 
@@ -270,19 +280,20 @@ class SurfaceGLM:
 
         X = self.design_matrix_.values
         Y = self.surface_data_
-        n_timepoints, n_vertices = Y.shape
-
-        # Reconstruct fitted values from per-label betas
-        # theta shape: (n_regressors, n_verts_in_group) — each vertex has
-        # its own beta estimates even when vertices share an AR(1) coefficient.
-        Y_hat = np.zeros_like(Y)
+        # Subtract in float64 before the writer casts to float32. Rounding the
+        # fitted baseline to BOLD's float32 precision loses small fluctuations.
+        # Use the original design: AR(1) estimates beta in whitened coordinates,
+        # but these residuals remain in the original time series coordinates.
+        residuals = np.empty(Y.shape, dtype=np.float64)
         for label in np.unique(self.labels_):
             mask = self.labels_ == label
-            Y_hat[:, mask] = X @ self.results_[label].theta
+            residuals[:, mask] = Y[:, mask] - X @ self.results_[label].theta
 
-        return Y - Y_hat
+        return residuals
 
-    def compute_contrast(self, contrast_def: str, output_type: str = "all") -> dict[str, Any]:
+    def compute_contrast(
+        self, contrast_def: str, output_type: str = "all"
+    ) -> dict[str, Any]:
         """Compute a contrast using nilearn's compute_contrast.
 
         Args:
@@ -343,7 +354,9 @@ class SurfaceGLM:
         ``self.regressor_names_`` — failing loudly is safer than silently
         emitting a zero-weighted contrast.
         """
-        return np.asarray(expression_to_contrast_vector(contrast_def, self.regressor_names_))
+        return np.asarray(
+            expression_to_contrast_vector(contrast_def, self.regressor_names_)
+        )
 
 
 class SurfaceResult:
@@ -653,7 +666,9 @@ def plot_surface_contrast_qc(
         output_path = output_dir / output_filename
 
         try:
-            title = f"{subject_id} {session} {run} - {contrast_name} (hemi-{hemisphere})"
+            title = (
+                f"{subject_id} {session} {run} - {contrast_name} (hemi-{hemisphere})"
+            )
             plot_surface_stat_map(
                 file_path,
                 output_path,

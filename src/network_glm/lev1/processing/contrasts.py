@@ -121,7 +121,9 @@ def compute_run_contrasts(
     for contrast_name, contrast_formula in contrasts.items():
         try:
             # Compute contrast
-            contrast_result = fitted_glm.compute_contrast(contrast_formula, output_type="all")
+            contrast_result = fitted_glm.compute_contrast(
+                contrast_formula, output_type="all"
+            )
 
             # Determine file extension based on data type (surface vs volumetric)
             if hemisphere is not None:
@@ -164,6 +166,8 @@ def compute_run_contrasts(
             all_saved_files[contrast_name] = saved_files
 
         except Exception as e:
-            logger.error("Failed to compute/save contrast %s: %s", contrast_name, e)
+            raise RuntimeError(
+                f"Failed to compute/save contrast {contrast_name}: {e}"
+            ) from e
 
     return all_saved_files

@@ -56,7 +56,9 @@ def handle_zero_variance_columns(
         logger.debug("Design matrix check: no zero-variance columns")
         return design_matrix, []
 
-    logger.warning("Dropping %d zero-variance column(s): %s", len(zero_var_cols), zero_var_cols)
+    logger.warning(
+        "Dropping %d zero-variance column(s): %s", len(zero_var_cols), zero_var_cols
+    )
 
     # Drop the zero-variance columns
     cleaned_dm = design_matrix.drop(columns=zero_var_cols)
@@ -98,39 +100,25 @@ def fit_run_glm(
         ...     'bold.nii.gz', design_matrix, 'task'
         ... )
     """
-    # Handle different input types
-    # For paths (including GIFTI), FirstLevelModel will load them
-    # For NIfTI images already loaded, pass them directly
-    if not isinstance(data_img, str | Path):
-        # Assume it's an already-loaded image (NIfTI)
-        pass
-
-    # Set GLM parameters
-    if analysis_type == "task":
-        glm_params = {
-            "mask_img": mask_img,
-            "noise_model": "ar1",
-            "standardize": False,
-            "smoothing_fwhm": smoothing_fwhm,
-            "minimize_memory": True,
-        }
-    elif analysis_type == "residual":
-        glm_params = {
-            "mask_img": mask_img,
-            "noise_model": "ar1",
-            "standardize": False,
-            "smoothing_fwhm": smoothing_fwhm,
-            "minimize_memory": False,
-        }
-    else:
+    if analysis_type not in {"task", "residual"}:
         raise ValueError(f"Unknown analysis_type: {analysis_type}")
+    # One fit configuration; retaining results is the only residual-specific change.
+    glm_params = {
+        "mask_img": mask_img,
+        "noise_model": "ar1",
+        "standardize": False,
+        "smoothing_fwhm": smoothing_fwhm,
+        "minimize_memory": analysis_type == "task",
+    }
 
     # Add subject label if provided
     if subject_label:
         glm_params["subject_label"] = subject_label
 
     mask_str = "fMRIPrep mask" if mask_img else "auto-masking"
-    smoothing_str = f"{smoothing_fwhm}mm smoothing" if smoothing_fwhm else "no smoothing"
+    smoothing_str = (
+        f"{smoothing_fwhm}mm smoothing" if smoothing_fwhm else "no smoothing"
+    )
     logger.info("Fitting GLM: %s, %s, %s", mask_str, analysis_type, smoothing_str)
 
     # Initialize and fit model
@@ -214,17 +202,22 @@ def validate_design_matrix(
 
     if design_matrix.shape[0] != n_scans:
         validation["errors"].append(
-            f"Design matrix rows ({design_matrix.shape[0]}) != " f"BOLD timepoints ({n_scans})"
+            f"Design matrix rows ({design_matrix.shape[0]}) != "
+            f"BOLD timepoints ({n_scans})"
         )
         validation["is_valid"] = False
 
     if design_matrix.isnull().any().any():
         bad_cols = design_matrix.columns[design_matrix.isnull().any()].tolist()
-        validation["errors"].append(f"Design matrix contains NaN values in columns: {bad_cols}")
+        validation["errors"].append(
+            f"Design matrix contains NaN values in columns: {bad_cols}"
+        )
         validation["is_valid"] = False
 
     if np.isinf(design_matrix.values).any():
-        bad_cols = design_matrix.columns[np.isinf(design_matrix.values).any(axis=0)].tolist()
+        bad_cols = design_matrix.columns[
+            np.isinf(design_matrix.values).any(axis=0)
+        ].tolist()
         validation["errors"].append(
             f"Design matrix contains infinite values in columns: {bad_cols}"
         )
@@ -245,7 +238,9 @@ def validate_design_matrix(
             for col in design_matrix.columns
         )
         if not has_constant:
-            validation["warnings"].append("No constant/intercept term found in design matrix")
+            validation["warnings"].append(
+                "No constant/intercept term found in design matrix"
+            )
 
     try:
         check_design_matrix_health(design_matrix)
@@ -293,7 +288,9 @@ def validate_glm_inputs(
                 # Load and check data
                 img = load_img(data_img)
                 if len(img.shape) != 4:
-                    validation["errors"].append(f"Expected 4D image, got {len(img.shape)}D")
+                    validation["errors"].append(
+                        f"Expected 4D image, got {len(img.shape)}D"
+                    )
                     validation["is_valid"] = False
                 else:
                     n_scans = img.shape[-1]
@@ -343,7 +340,9 @@ def validate_glm_inputs(
 
     # Check for constant regressor (intercept)
     if "constant" not in design_matrix.columns:
-        validation["warnings"].append("No constant/intercept term found in design matrix")
+        validation["warnings"].append(
+            "No constant/intercept term found in design matrix"
+        )
 
     # Inline design-matrix sanity (rank only — contrast VIFs are research-level
     # and live in run_quality_control, saved per-run for cohort-QC review).

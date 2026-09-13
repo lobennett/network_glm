@@ -103,8 +103,35 @@ arms of the Network Similarity Index experiment (task-residual FC vs rest FC):
 
 Related residual flags: `--residuals` (emit them at all), `--fc-confounds` (regress
 global signal / WM / CSF, per Du et al. 2025), and `--no-residual-filter` (skip the
-0.01–0.1 Hz band-pass on the CIFTI path, deferring temporal filtering to XCP-D so
-you don't double-band-pass).
+0.01–0.1 Hz band-pass in any space, deferring temporal filtering to a downstream
+tool such as XCP-D). `--no-residual-filter` does not disable `--fc-confounds`.
+
+Residuals use each voxel/vertex's own coefficients and the original design:
+`R = Y - X @ beta`. The AR(1) model estimates beta after whitening; the saved
+residual is in the original time coordinates. Surface/CIFTI values retain their
+input units; the volume fit uses Nilearn's default percent-signal scaling.
+`--skip-qc-plots` affects plots only. Failure to write a requested residual or
+contrast fails the run, and failed runs cannot contribute stale maps to fixed effects.
+
+The optional tissue/global-signal regression follows the task fit. These sequential
+operations can reintroduce task-related signal; they are not equivalent to one joint
+regression. The [residual review](docs/RESIDUALS-REVIEW.md) explains the distinction
+and includes a reproducible numerical audit.
+
+### Resuming a run
+
+`--skip-existing` requires a completed per-run record under `task_residuals/` with
+matching source code, dependency versions, scientific settings, and input contents.
+It also verifies the recorded output contents. This works for contrast-only runs as
+well as runs with residuals. Hashing reads the files; reuse is not a metadata-only check.
+
+A change to the exclusion lock or `--min-runs` still refreshes fixed effects without
+refitting unchanged included runs. Old output files without completion records are
+refitted once. A failed or interrupted replacement fit cannot reuse an older receipt.
+
+Use a separate results directory for each scientific configuration. Contrast filenames
+include the RT arm, but residual, QC, and subject-manifest filenames are shared within
+a subject/task directory. Sharing that directory across arms can overwrite those files.
 
 ## Task battery
 
@@ -132,7 +159,7 @@ depends on it. Do not reorder without a behavior-preserving audit.
 ├── fixed_effects/       within-subject across-run combination
 ├── quality_control/     contrast VIFs, design diagnostics, QC plots
 ├── simplified_events/   the event model actually fit
-├── task_residuals/      residual timeseries (with --residuals)
+├── task_residuals/      residual timeseries (with --residuals) and completion records
 └── masks/               per-run and intersected brain masks
 ```
 
@@ -160,7 +187,7 @@ scan-level or contrast-level exclusions.
 ```
 src/network_glm/
   cli.py            dispatch: lev1 | lev2 | cohort-outliers | design-plots
-  lev1/             per-run fitting: prepare -> runner -> processing/*
+  lev1/             per-run fitting: prepare -> runner -> processing/*; cache.py checks reuse
   lev1/processing/  events, confounds, design, glm, contrasts, fixed_effects,
                     residuals, masks, quality_control, and the surface/CIFTI IO
   lev2/             group level: run.py (FSL randomise), surface.py (sign-flip

@@ -9,6 +9,7 @@ import types
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from network_glm.lev1 import runner
 from network_glm.lev1.processing.residuals import (
@@ -21,7 +22,8 @@ from network_glm.lev1.processing.surface_data import SurfaceGLM
 def test_surface_residual_filename_includes_space_segment():
     name = surface_residual_filename("s10_ses-01_task-flanker_run-1", "L", "fsaverage6")
     assert name == (
-        "s10_ses-01_task-flanker_run-1_hemi-L_space-fsaverage6" "_task-regressed-residuals.func.gii"
+        "s10_ses-01_task-flanker_run-1_hemi-L_space-fsaverage6"
+        "_task-regressed-residuals.func.gii"
     )
 
 
@@ -36,14 +38,15 @@ def test_writer_output_basename_matches_helper(tmp_path):
     glm.fit(Y, pd.DataFrame(X, columns=["a", "b", "c"]))
 
     base = "s10_ses-01_task-flanker_run-1"
-    res = process_surface_residuals(glm, tmp_path, base, "L", tr=1.49, surface_space="fsaverage6")
+    res = process_surface_residuals(
+        glm, tmp_path, base, "L", tr=1.49, surface_space="fsaverage6"
+    )
     assert res["success"], res
     assert res["saved_path"].name == surface_residual_filename(base, "L", "fsaverage6")
 
 
-def test_skip_existing_skips_when_surface_residuals_present(tmp_path):
-    """With both-hemisphere residuals already on disk (writer naming),
-    process_single_run must short-circuit to True under --skip-existing."""
+def test_legacy_surface_residuals_without_completion_are_not_reused(tmp_path):
+    """A filename alone cannot prove which model created a residual."""
     args = types.SimpleNamespace(
         subj_id="s10",
         task_name="flanker",
@@ -59,14 +62,14 @@ def test_skip_existing_skips_when_surface_residuals_present(tmp_path):
     # Empty run_files: if the skip-check fails to match, process_single_run
     # falls through and raises ValueError on missing surface files. A correct
     # skip returns True before touching run_files.
-    result = runner.process_single_run(
-        session,
-        run,
-        {},
-        args,
-        sample_type="validation",
-        dirs={"task_residuals": tmp_path},
-        task_params={"tr": 1.49},
-        exclusions=set(),
-    )
-    assert result is True
+    with pytest.raises(ValueError, match="Missing surface files"):
+        runner.process_single_run(
+            session,
+            run,
+            {},
+            args,
+            sample_type="validation",
+            dirs={"task_residuals": tmp_path},
+            task_params={"tr": 1.49},
+            exclusions=set(),
+        )
