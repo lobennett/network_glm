@@ -58,8 +58,8 @@ def test_read_input_provenance_summarizes_and_dedupes(tmp_path):
     base2 = tmp_path / "sub-s10" / "task-flanker"
     _write_manifest(base1, code_sha="abc123", config_version="v1", excl_sha="dead00")
     _write_manifest(base2, code_sha="abc123", config_version="v1", excl_sha="dead00")
-    f1 = _fe_file(base1, "sub-s03_fe.nii.gz")
-    f2 = _fe_file(base2, "sub-s10_fe.nii.gz")
+    f1 = _fe_file(base1, "sub-s03_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
+    f2 = _fe_file(base2, "sub-s10_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
 
     summary = _read_input_provenance([str(f1), str(f2)])
 
@@ -78,7 +78,7 @@ def test_read_input_provenance_missing_manifest_is_unknown(tmp_path):
 
     base = tmp_path / "sub-s03" / "task-flanker"
     # No manifest written.
-    f = _fe_file(base, "sub-s03_fe.nii.gz")
+    f = _fe_file(base, "sub-s03_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
 
     summary = _read_input_provenance([str(f)])
 
@@ -97,8 +97,8 @@ def test_read_input_provenance_detects_inconsistency(tmp_path):
     base2 = tmp_path / "sub-s10" / "task-flanker"
     _write_manifest(base1, code_sha="abc123", config_version="v1", excl_sha="dead00")
     _write_manifest(base2, code_sha="zzz999", config_version="v1", excl_sha="beef11")
-    f1 = _fe_file(base1, "sub-s03_fe.nii.gz")
-    f2 = _fe_file(base2, "sub-s10_fe.nii.gz")
+    f1 = _fe_file(base1, "sub-s03_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
+    f2 = _fe_file(base2, "sub-s10_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
 
     summary = _read_input_provenance([str(f1), str(f2)])
 
@@ -126,7 +126,7 @@ def test_read_input_provenance_handles_missing_exclusions_block(tmp_path):
 
     base = tmp_path / "sub-s03" / "task-flanker"
     _write_manifest(base, code_sha="abc123", config_version="v1", excl_sha=None)
-    f = _fe_file(base, "sub-s03_fe.nii.gz")
+    f = _fe_file(base, "sub-s03_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
 
     summary = _read_input_provenance([str(f)])
 
@@ -151,8 +151,8 @@ def test_write_lev2_provenance_warns_on_inconsistent_inputs(tmp_path, monkeypatc
     base2 = lev1 / "sub-s10" / "task-flanker"
     _write_manifest(base1, code_sha="abc123", config_version="v1", excl_sha="dead00")
     _write_manifest(base2, code_sha="zzz999", config_version="v1", excl_sha="beef11")
-    f1 = _fe_file(base1, "sub-s03_fe.nii.gz")
-    f2 = _fe_file(base2, "sub-s10_fe.nii.gz")
+    f1 = _fe_file(base1, "sub-s03_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
+    f2 = _fe_file(base2, "sub-s10_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
 
     from types import SimpleNamespace
 
@@ -191,8 +191,8 @@ def test_write_lev2_provenance_no_warning_when_consistent(tmp_path, monkeypatch,
     base2 = lev1 / "sub-s10" / "task-flanker"
     _write_manifest(base1, code_sha="abc123", config_version="v1", excl_sha="dead00")
     _write_manifest(base2, code_sha="abc123", config_version="v1", excl_sha="dead00")
-    f1 = _fe_file(base1, "sub-s03_fe.nii.gz")
-    f2 = _fe_file(base2, "sub-s10_fe.nii.gz")
+    f1 = _fe_file(base1, "sub-s03_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
+    f2 = _fe_file(base2, "sub-s10_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
 
     from types import SimpleNamespace
 

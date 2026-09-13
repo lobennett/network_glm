@@ -52,8 +52,8 @@ def test_collect_run_inputs_volumetric(tmp_path):
     assert ev in inputs
     assert cf in inputs
     assert bold in inputs
-    # masks are derived/intermediate, not a study input we hash here
-    assert (tmp_path / "mask.nii.gz") not in inputs
+    # fMRIPrep masks are consumed by the fit and combined-mask construction.
+    assert (tmp_path / "mask.nii.gz") in inputs
 
 
 def test_collect_run_inputs_surface_both_hemis(tmp_path):

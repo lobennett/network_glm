@@ -36,8 +36,8 @@ def test_write_lev2_provenance_writes_both_files(tmp_path, monkeypatch):
     lev1_a.mkdir()
     lev1_b.mkdir()
 
-    f1 = _touch(tmp_path / "fe1.nii.gz")
-    f2 = _touch(tmp_path / "fe2.nii.gz")
+    f1 = _touch(tmp_path / "sub-s03_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
+    f2 = _touch(tmp_path / "sub-s10_task-flanker_contrast-incongruent-congruent_rtmodel-RTDur_stat-fixed-effects.nii.gz")
 
     args = SimpleNamespace(
         contrast="task-flanker_contrast-incongruent-congruent",
