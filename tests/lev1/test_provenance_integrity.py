@@ -36,13 +36,13 @@ def test_serialized_package_identity_is_installed_network_glm(tmp_path):
     assert generator["Version"] == version("network_glm")
 
 
-@pytest.mark.parametrize("key,mask_key,extension", [
-    ("mni_data", "mni_brain_mask", ".nii.gz"),
-    ("t1w_data", "t1w_brain_mask", ".nii.gz"),
-    ("left_surface", None, ".func.gii"),
-    ("cifti_bold", None, ".dtseries.nii"),
+@pytest.mark.parametrize("space,key,mask_key,extension", [
+    ("MNI", "mni_data", "mni_brain_mask", ".nii.gz"),
+    ("T1w", "t1w_data", "t1w_brain_mask", ".nii.gz"),
+    ("surface", "left_surface", None, ".func.gii"),
+    ("fsLR", "cifti_bold", None, ".dtseries.nii"),
 ])
-def test_consumed_timing_and_mask_hashes_change_in_existing_records(tmp_path, key, mask_key, extension):
+def test_consumed_timing_and_mask_hashes_change_in_existing_records(tmp_path, space, key, mask_key, extension):
     bold = tmp_path / ("bold" + extension)
     bold.write_bytes(b"synthetic identity fixture")
     sidecar = sidecar_path_for(bold)
@@ -53,11 +53,11 @@ def test_consumed_timing_and_mask_hashes_change_in_existing_records(tmp_path, ke
         mask.write_bytes(b"mask A")
         run_files[mask_key] = mask
     files = {"ses-01": {"run-1": run_files}}
-    args = args_for(tmp_path)
+    args = args_for(tmp_path, space=space)
 
     def record():
         run._write_lev1_provenance(tmp_path, args, {"base": tmp_path / "task"},
-                                   run._collect_run_inputs(files))
+                                   run._collect_run_inputs(files, space))
         return {row["path"]: row["sha256"] for row in
                 json.loads((tmp_path / "task/run-manifest.json").read_text())["inputs"]}
 
@@ -88,9 +88,52 @@ def test_only_consumed_surface_sidecar_and_combined_mask_are_recorded(tmp_path):
     combined.touch()
     inputs = run._collect_run_inputs(
         {"ses-01": {"run-1": {"left_surface": left, "right_surface": right}}},
+        "surface",
         combined_mask_path=combined,
     )
     assert set(inputs) == {left, right, sidecar_path_for(left), combined}
+
+
+ALL_DISCOVERED_KEYS = {
+    "mni_data": ".nii.gz", "t1w_data": ".nii.gz", "left_surface": ".func.gii",
+    "right_surface": ".func.gii", "cifti_bold": ".dtseries.nii",
+    "mni_brain_mask": ".nii.gz", "t1w_brain_mask": ".nii.gz",
+}
+
+
+@pytest.mark.parametrize("space,timing_key,mask_key", [
+    ("MNI", "mni_data", "mni_brain_mask"),
+    ("T1w", "t1w_data", "t1w_brain_mask"),
+    ("surface", "left_surface", None),
+    ("fsaverage6", "left_surface", None),
+    ("fsLR", "cifti_bold", None),
+])
+def test_mixed_space_discovery_records_only_what_the_space_consumed(
+    tmp_path, space, timing_key, mask_key
+):
+    """FileFinder keeps every matched space; only the one that ran is consumed."""
+    run_files = {"events": tmp_path / "events.tsv", "confounds": tmp_path / "confounds.tsv"}
+    for name, extension in ALL_DISCOVERED_KEYS.items():
+        bold = tmp_path / (name + extension)
+        bold.touch()
+        sidecar_path_for(bold).write_text('{"StartTime": 0.5}')
+        run_files[name] = bold
+    for path in (run_files["events"], run_files["confounds"]):
+        path.touch()
+
+    inputs = set(run._collect_run_inputs({"ses-01": {"run-1": run_files}}, space))
+
+    bold_keys = {timing_key} | ({"right_surface"} if timing_key == "left_surface" else set())
+    expected = {run_files["events"], run_files["confounds"]}
+    expected |= {run_files[k] for k in bold_keys}
+    expected |= {sidecar_path_for(run_files[timing_key])}
+    if mask_key:
+        expected.add(run_files[mask_key])
+    assert inputs == expected
+    unused = set(ALL_DISCOVERED_KEYS) - bold_keys - ({mask_key} if mask_key else set())
+    for name in unused:
+        assert run_files[name] not in inputs
+        assert sidecar_path_for(run_files[name]) not in inputs
 
 
 @pytest.mark.parametrize("space,units", [("MNI", "percent signal change"),

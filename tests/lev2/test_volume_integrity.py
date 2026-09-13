@@ -1,6 +1,7 @@
 """Synthetic consumer checks; the fake executable does not implement FSL statistics."""
 
 import json
+import os
 from pathlib import Path
 
 import nibabel as nib
@@ -188,6 +189,13 @@ def test_successful_replacement_preserves_prior_directory(tmp_path, fake_randomi
     assert len(list(output.glob(f".{CONTRAST}.previous-*/historical.txt"))) == 1
 
 
+def cli_args(output, *extra):
+    """A real parsed CLI invocation, the only provenance context lev2 accepts."""
+    return run.get_parser().parse_args(
+        ["--contrast", CONTRAST, "--level1-dirs", str(output), "--output-dir", str(output), *extra]
+    )
+
+
 def test_manifest_failure_cannot_replace_previous_results(tmp_path, monkeypatch, fake_randomise):
     files = [effect(tmp_path / "lev1", "s03")]
     output = tmp_path / "outputs"
@@ -200,7 +208,8 @@ def test_manifest_failure_cannot_replace_previous_results(tmp_path, monkeypatch,
 
     monkeypatch.setattr(run.provenance, "write_run_manifest", fail)
     with pytest.raises(OSError, match="synthetic"):
-        run.run_level2_analysis(CONTRAST, files, output, num_permutations=10)
+        run.run_level2_analysis(CONTRAST, files, output, num_permutations=10,
+                                provenance_args=cli_args(output, "--allow-dirty"))
     assert (old / "run-manifest.json").read_text() == "previous manifest"
     assert len(list(old.iterdir())) == 1
 
@@ -212,3 +221,47 @@ def test_cli_invalid_roster_returns_failure_without_outputs(tmp_path):
     assert run.main(["--contrast", CONTRAST, "--level1-dirs", str(root), str(root),
                      "--output-dir", str(output)]) == 1
     assert not output.exists()
+
+
+def test_direct_call_without_cli_context_invents_no_provenance(tmp_path, fake_randomise):
+    """No invocation is fabricated: absent real args, the optional manifest is omitted."""
+    files = [effect(tmp_path / "lev1", "s03"), effect(tmp_path / "lev1", "s20")]
+    output = tmp_path / "outputs"
+    assert run.run_level2_analysis(CONTRAST, files, output, num_permutations=10)
+    published = output / CONTRAST
+    assert (published / CORRP).is_file()
+    assert not (published / "run-manifest.json").exists()
+    assert not (published / "dataset_description.json").exists()
+
+
+def test_cli_context_keeps_the_dirty_tree_guard(tmp_path, monkeypatch, fake_randomise):
+    """A real invocation without --allow-dirty still refuses to stamp a dirty tree."""
+    files = [effect(tmp_path / "lev1", "s03")]
+    output = tmp_path / "outputs"
+    old = output / CONTRAST
+    old.mkdir(parents=True)
+    (old / "historical.txt").write_text("prior result")
+    monkeypatch.setattr(run.provenance, "git_is_dirty", lambda: True)
+    with pytest.raises(RuntimeError, match="uncommitted"):
+        run.run_level2_analysis(CONTRAST, files, output, num_permutations=10,
+                                provenance_args=cli_args(output))
+    assert (old / "historical.txt").read_text() == "prior result"
+
+
+def test_published_directory_is_readable_by_the_umask_not_owner_only(tmp_path, fake_randomise):
+    files = [effect(tmp_path / "lev1", "s03")]
+    output = tmp_path / "outputs"
+    umask = os.umask(0o022)
+    os.umask(umask)
+    assert run.run_level2_analysis(CONTRAST, files, output, num_permutations=10)
+    assert (output / CONTRAST).stat().st_mode & 0o777 == 0o777 & ~umask
+
+
+def test_replacement_keeps_the_prior_contrast_directory_mode(tmp_path, fake_randomise):
+    files = [effect(tmp_path / "lev1", "s03")]
+    output = tmp_path / "outputs"
+    old = output / CONTRAST
+    old.mkdir(parents=True)
+    old.chmod(0o750)
+    assert run.run_level2_analysis(CONTRAST, files, output, num_permutations=10)
+    assert (output / CONTRAST).stat().st_mode & 0o777 == 0o750
