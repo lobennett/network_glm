@@ -133,7 +133,8 @@ def define_nuisance_trials(events_df: pd.DataFrame, task: str) -> dict[str, pd.S
         "spatialTSWCuedTS",
         "spatialTSWShapeMatching",
     }
-    # Base stop/go tasks use bare trial_type == 'go'; stop duals encode go as
+    # Base stop/go tasks key on trial_type == 'go' (goNogo additionally requires
+    # the test_trial row, below); stop duals encode go as
     # 'go_congruent'/'go_con'/etc., so match the prefix. Restricting to go trials
     # keeps successful stops (key_press == -1) from being mis-flagged as omissions.
     go_trial_tasks = {"stopSignal", "goNogo"}
