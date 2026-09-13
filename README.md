@@ -170,10 +170,10 @@ rows keep their own regressor; ordinary `break` rows are modeled by no
 regressor and remain implicit baseline, as they already were when unlabeled. A
 run whose only go omissions were break rows now yields an all-zero
 `go_omission` column, which the existing zero-variance pruning drops before
-fitting; no go/no-go contrast references it. Publishing or
-installing this correction does not regenerate existing participant designs,
-fits, or residuals; reprocessing historical outputs requires a separate,
-explicit rerun.
+fitting; no go/no-go contrast references it. Publishing or installing this
+correction does not regenerate existing participant designs, fits, or
+residuals; reprocessing historical outputs requires a separate, explicit
+rerun.
 
 ## Outputs
 
