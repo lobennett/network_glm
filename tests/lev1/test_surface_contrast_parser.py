@@ -166,6 +166,9 @@ TASKS_WITH_RTDUR = [
     "spatialTS",
     "stopSignal",
     "goNogo",
+    "directedForgettingWFlanker",
+    "stopSignalWDirectedForgetting",
+    "stopSignalWFlanker",
 ]
 
 

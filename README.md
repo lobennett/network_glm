@@ -149,6 +149,10 @@ a subject/task directory. Sharing that directory across arms can overwrite those
 Defined in `src/network_glm/task_config/battery.yaml`; per-task regressors and
 contrasts live in `src/network_glm/task_config/tasks/<task>.yaml`.
 
+For optional constituent-condition and dual-task RT coefficient maps, see the
+[diagnostic Python recipe](docs/DIAGNOSTIC-CONTRASTS.md). It uses an existing fit
+and a separate output directory without changing canonical task definitions.
+
 - **8 base tasks** (one paradigm per run): `cuedTS`, `directedForgetting`, `flanker`,
   `goNogo`, `nBack`, `shapeMatching`, `spatialTS`, `stopSignal`
 - **11 dual tasks** (two concurrent paradigms per run): `directedForgettingWCuedTS`,
