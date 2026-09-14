@@ -7,8 +7,12 @@ model, or adding maps to normal `network-glm lev1` output.
 
 The four condition contrasts extract the congruent/incongruent coefficients for
 flanker and two cue-switch condition coefficients for cuedTS. The other three
-extract the existing pooled `response_time` coefficient for the discovery dual
-tasks. These are coefficients relative to the fitted model's implicit baseline;
+extract the existing pooled `response_time` coefficient for the three dual tasks
+the exploration covered: `directedForgettingWFlanker`,
+`stopSignalWDirectedForgetting` and `stopSignalWFlanker`. Every dual task in the
+canonical battery declares that pooled regressor in both cohorts, so this scope
+reflects the exploration's coverage, not a modeling limit.
+These are coefficients relative to the fitted model's implicit baseline;
 they are not absolute activation or correlation/reliability estimates. Subtracting
 the two constituent **effect-size** maps gives the corresponding difference
 effect; subtracting their z maps does not give a difference z map.
@@ -99,8 +103,10 @@ column skips its contrast; the recipe never restores a regressor or alters the
 fit. The fitted design's columns are the only selection rule: because noRT and
 RTepoch designs carry no pooled `response_time` regressor, the RT-only dual-task
 requests land in `skipped` under those arms and produce no maps, while `rt_model`
-only labels the arm that the supplied fit already used. An unknown task is
-rejected by the explicit mapping rather than falling back to defaults.
+only labels the arm that the supplied fit already used. A task outside this
+opt-in recipe — including a canonical battery task the exploration did not
+cover — raises `KeyError` from the explicit mapping rather than falling back to
+defaults.
 If export fails partway through, retain that directory for inspection and choose
 a new directory for a retry.
 
