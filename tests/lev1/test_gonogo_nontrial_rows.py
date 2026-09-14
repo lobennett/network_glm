@@ -4,22 +4,21 @@ All rows are synthetic. Breaks mirror the observed event structure: a retained
 condition label, ten-second duration, no key press, and missing response data.
 """
 
+import json
+from argparse import Namespace
+
+import nibabel as nib
 import numpy as np
 import pandas as pd
 import pytest
 
-from network_glm.lev1.processing.contrasts import filter_contrasts_for_dropped_columns
+from network_glm.lev1 import runner
 from network_glm.lev1.processing.design import create_design_matrix
 from network_glm.lev1.processing.events import (
     add_junk_trials,
     preprocess_events,
     save_simplified_events,
 )
-from network_glm.lev1.processing.glm import (
-    handle_zero_variance_columns,
-    validate_design_matrix,
-)
-from network_glm.task_config.loader import get_task_contrasts
 
 
 @pytest.fixture
@@ -117,7 +116,8 @@ def test_gonogo_trial_design_matches_input_without_breaks(gonogo_events, rt_mode
     assert feedback["duration"].tolist() == [10.0] * 4
 
 
-def test_gonogo_run_without_genuine_omissions_still_fits():
+@pytest.mark.parametrize("rt_model", ["RTDur", "noRT"])
+def test_gonogo_run_without_genuine_omissions_still_fits(rt_model, tmp_path):
     """A run whose only go-labeled omission is a break must remain fittable."""
     events = pd.DataFrame(
         {
@@ -133,6 +133,13 @@ def test_gonogo_run_without_genuine_omissions_still_fits():
         }
     )
     n_scans = 150
+    rng = np.random.default_rng(42)
+    confounds = pd.DataFrame(
+        {
+            "cosine00": np.cos(np.pi * (np.arange(n_scans) + 0.5) / n_scans),
+            "trans_x": rng.normal(scale=0.01, size=n_scans),
+        }
+    )
     processed, fraction = add_junk_trials(preprocess_events(events, "goNogo"), "goNogo")
     # No genuine go omission survives; the sole omission-shaped row is a break.
     assert processed["omission"].sum() == 0
@@ -140,22 +147,86 @@ def test_gonogo_run_without_genuine_omissions_still_fits():
 
     design_matrix, _ = create_design_matrix(
         processed,
-        pd.DataFrame(index=range(n_scans)),
+        confounds,
         "goNogo",
         n_scans,
         tr=1.49,
         slice_time_ref=0.701,
+        rt_model=rt_model,
     )
     assert (design_matrix["go_omission"] == 0).all()
 
-    # This is the runner's own ordering: prune, filter contrasts, then validate.
-    design_matrix, dropped = handle_zero_variance_columns(design_matrix)
-    assert "go_omission" in dropped
-    contrasts, skipped = filter_contrasts_for_dropped_columns(
-        get_task_contrasts("goNogo", "RTDur"), dropped
+    run_files = {
+        "events": tmp_path / "events.tsv",
+        "confounds": tmp_path / "confounds.tsv",
+        "mni_data": tmp_path / "bold.nii.gz",
+        "mni_brain_mask": tmp_path / "mask.nii.gz",
+    }
+    events.to_csv(run_files["events"], sep="\t", index=False)
+    confounds.to_csv(run_files["confounds"], sep="\t", index=False)
+    signal = design_matrix.to_numpy() @ rng.normal(
+        scale=5, size=(design_matrix.shape[1], 27)
     )
-    assert skipped == {}
-    assert "task-baseline" in contrasts
+    data = 1000 + signal + rng.normal(size=(n_scans, 27))
+    nib.save(
+        nib.Nifti1Image(data.T.reshape(3, 3, 3, n_scans), np.eye(4)),
+        run_files["mni_data"],
+    )
+    nib.save(
+        nib.Nifti1Image(np.ones((3, 3, 3), dtype=np.uint8), np.eye(4)),
+        run_files["mni_brain_mask"],
+    )
+    (tmp_path / "bold.json").write_text(
+        json.dumps({"SliceTimingCorrected": True, "StartTime": 0.701})
+    )
+    dirs = {
+        name: tmp_path / name
+        for name in (
+            "indiv_contrasts", "quality_control", "task_residuals", "simplified_events"
+        )
+    }
+    for directory in dirs.values():
+        directory.mkdir()
+    args = Namespace(
+        subj_id="sub-test",
+        task_name="goNogo",
+        space="MNI",
+        rt_model=rt_model,
+        smoothing_fwhm=None,
+        residuals=False,
+        fc_confounds=False,
+        skip_existing=False,
+    )
 
-    validation = validate_design_matrix(design_matrix, n_scans=n_scans)
-    assert validation["is_valid"], validation["errors"]
+    assert runner.process_single_run(
+        "ses-1", "run-1", run_files, args, "discovery", dirs, {"tr": 1.49}, set()
+    )
+
+    base = "sub-test_ses-1_task-goNogo_run-1"
+    saved_design = pd.read_csv(
+        dirs["quality_control"] / f"{base}_desc-designMatrix.csv"
+    )
+    assert len(saved_design) == n_scans
+    assert "go_omission" not in saved_design
+    assert ("response_time" in saved_design) == (rt_model == "RTDur")
+    for name in ("go", "nogo_success", "nogo_failure", "break_with_performance_feedback"):
+        np.testing.assert_allclose(saved_design[name], design_matrix[name], atol=1e-12)
+
+    expected_contrasts = ["go", "nogo_success", "nogo_success-go", "task-baseline"]
+    if rt_model == "RTDur":
+        expected_contrasts.append("response_time")
+    expected_paths = set()
+    for contrast in expected_contrasts:
+        for stat in ("effect-size", "variance", "z_score"):
+            path = dirs["indiv_contrasts"] / (
+                f"{base}_contrast-{contrast}_rtmodel-{rt_model}_stat-{stat}.nii.gz"
+            )
+            expected_paths.add(path)
+            values = nib.load(path).get_fdata()
+            assert values.shape == (3, 3, 3)
+            assert np.isfinite(values).all()
+            if stat == "variance":
+                assert (values > 0).all()
+            else:
+                assert np.any(values != 0)
+    assert set(dirs["indiv_contrasts"].glob("*.nii.gz")) == expected_paths
