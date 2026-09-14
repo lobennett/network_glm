@@ -225,8 +225,19 @@ the warning, not the record.
 ## Development
 
 ```bash
-uv run pytest                    # full suite
-uv run pytest tests/lev1 -v      # first-level only
+uv sync --frozen --group dev
+uv run --frozen pytest -q -ra          # full suite; report skips and failures
+uv run --frozen pytest tests/lev1 -v   # first-level only
+uv run --frozen pytest tests/lev2 -v   # group-level only
 ```
 
-Tests are offline — no cluster or real imaging data required.
+Tests use generated fixtures — no cluster or participant imaging data required.
+[GitHub Actions](.github/workflows/tests.yml) runs the full suite on pushes and pull
+requests with Python 3.13 from `.python-version` and dependencies from `uv.lock`.
+Coverage includes first-level volume/surface/CIFTI processing, group surface
+sign-flip permutations, volume group command/provenance/error handling, cohort QC,
+plots, and the CLI. Dependency installation needs network access; the tests run offline.
+
+FSL `randomise` execution is mocked in the volume group tests; script assertions
+check command construction, not native FSL results. Native FSL, FreeSurfer
+`mri_surf2surf`, and Sherlock/Slurm execution are not validated in generic Linux CI.
