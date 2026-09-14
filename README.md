@@ -164,6 +164,21 @@ and a separate output directory without changing canonical task definitions.
 Battery order is canonical — `--all` / `--base-tasks` / `--dual-tasks` resolution
 depends on it. Do not reorder without a behavior-preserving audit.
 
+Historical go/no-go designs (RTDur and noRT) may include non-trial rows in
+`go_omission`, `nogo_success`, or `nogo_failure` when `break` or
+`break_with_performance_feedback` rows retain a condition label. Go-labeled
+breaks also affected the go-trial junk fraction and could affect run exclusion.
+Every go/no-go trial regressor now requires `trial_id == 'test_trial'`,
+preserving genuine omissions and no-go trials. `break_with_performance_feedback`
+rows keep their own regressor; ordinary `break` rows are modeled by no
+regressor and remain implicit baseline, as they already were when unlabeled. A
+run whose only go omissions were break rows now yields an all-zero
+`go_omission` column, which the existing zero-variance pruning drops before
+fitting; no go/no-go contrast references it. Publishing or installing this
+correction does not regenerate existing participant designs, fits, or
+residuals; reprocessing historical outputs requires a separate, explicit
+rerun.
+
 ## Outputs
 
 `lev1` writes per subject × task under `--results-dir`:
