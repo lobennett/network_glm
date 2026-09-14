@@ -6,7 +6,7 @@ expected_sessions: 5
 # Go/No-Go task
 # Trial types: go, nogo_success, nogo_failure
 # Nuisance regressors (omission, commission, rt_fast) are computed
-# only for go trials (see define_nuisance_trials).
+# only for go test_trial rows (see define_nuisance_trials).
 #
 # RT modeling — Mumford 2023 ConstDurRTDur (biorxiv 528677):
 # We include a pooled response_time (RTDur) regressor restricted to
@@ -36,12 +36,14 @@ regressors:
   nogo_success:
     amplitude: 1
     duration: 1
-    subset: "trial_type == 'nogo_success'"
+    # Break rows can retain this condition label without being no-go trials.
+    subset: "trial_id == 'test_trial' and trial_type == 'nogo_success'"
 
   nogo_failure:
     amplitude: 1
     duration: 1
-    subset: "trial_type == 'nogo_failure'"
+    # Break rows can retain this condition label without being no-go trials.
+    subset: "trial_id == 'test_trial' and trial_type == 'nogo_failure'"
 
   response_time:
     amplitude: 1
