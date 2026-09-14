@@ -34,6 +34,8 @@ for suffix in suffixes:
     if mode == 'wrong-corrected-name' and suffix == '_tfce_corrp_fstat1':
         suffix = '_tfce_corrp_fstat99'
     shutil.copyfile(os.environ['TEST_PRODUCT'], prefix + suffix + '.nii.gz')
+if os.environ.get('TEST_EXTRA_PRODUCT'):
+    shutil.copyfile(os.environ['TEST_EXTRA_PRODUCT'], prefix + '_optional.nii.gz')
 if mode == 'missing-preparation' and '-R' in args:
     Path(args[args.index('-i') + 1]).unlink()
 ''')

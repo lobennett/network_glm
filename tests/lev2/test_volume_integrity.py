@@ -2,6 +2,8 @@
 
 import json
 import os
+import subprocess
+import zlib
 from pathlib import Path
 
 import nibabel as nib
@@ -10,7 +12,7 @@ import pytest
 
 from network_glm.lev2 import run
 
-from tests.lev2.helpers import CONTRAST, CORRP, effect, save
+from tests.lev2.helpers import CONTRAST, CORRP, corrupt_gzip, effect, save
 
 
 @pytest.mark.parametrize("alias", [False, True])
@@ -152,7 +154,7 @@ def test_disjoint_roots_keep_4d_order_roster_and_two_sided_command(tmp_path, fak
 
 
 @pytest.mark.parametrize("mode", ["noop", "fail", "missing-t", "wrong-corrected-name",
-                                 "unreadable", "shape", "affine", "nan", "inf",
+                                 "unreadable", "corrupt-gzip", "shape", "affine", "nan", "inf",
                                  "missing-preparation"])
 def test_failed_attempt_preserves_every_previous_output(tmp_path, monkeypatch, fake_randomise, mode):
     files = [effect(tmp_path / "lev1", "s03"), effect(tmp_path / "lev1", "s20")]
@@ -166,6 +168,8 @@ def test_failed_attempt_preserves_every_previous_output(tmp_path, monkeypatch, f
     bad = tmp_path / "bad-product.nii.gz"
     if mode == "unreadable":
         bad.write_bytes(b"not an image")
+    elif mode == "corrupt-gzip":
+        corrupt_gzip(bad)
     elif mode in {"shape", "affine", "nan", "inf"}:
         save(bad, np.ones((1, 1, 1)) if mode == "shape" else
              np.full((3, 3, 3), {"nan": np.nan, "inf": np.inf}.get(mode, 1)),
@@ -234,18 +238,74 @@ def test_direct_call_without_cli_context_invents_no_provenance(tmp_path, fake_ra
     assert not (published / "dataset_description.json").exists()
 
 
-def test_cli_context_keeps_the_dirty_tree_guard(tmp_path, monkeypatch, fake_randomise):
-    """A real invocation without --allow-dirty still refuses to stamp a dirty tree."""
-    files = [effect(tmp_path / "lev1", "s03")]
+@pytest.mark.parametrize("allow_dirty", [False, True])
+def test_dirty_source_cli_publishes_with_truthful_provenance(
+    tmp_path, monkeypatch, fake_randomise, capsys, allow_dirty,
+):
+    """Real dirty-source detection must not discard valid volume results."""
+    source = tmp_path / "source"
+    source.mkdir()
+    subprocess.run(["git", "init", "-q", str(source)], check=True)
+    tracked = source / "model.py"
+    tracked.write_text("# committed source\n")
+    subprocess.run(["git", "add", "model.py"], cwd=source, check=True)
+    subprocess.run(["git", "-c", "user.name=Synthetic Test", "-c",
+                    "user.email=test@example.invalid", "commit", "-qm", "fixture"],
+                   cwd=source, check=True)
+    tracked.write_text("# modified source\n")
+    monkeypatch.setattr(run.provenance, "_REPO_ROOT", source)
+    assert run.provenance.git_is_dirty()
+    source_sha = run.provenance.git_sha()
+    assert source_sha.endswith("+dirty")
+
+    root = tmp_path / "lev1"
+    files = [effect(root, "s03"), effect(root, "s20")]
     output = tmp_path / "outputs"
     old = output / CONTRAST
     old.mkdir(parents=True)
     (old / "historical.txt").write_text("prior result")
-    monkeypatch.setattr(run.provenance, "git_is_dirty", lambda: True)
-    with pytest.raises(RuntimeError, match="uncommitted"):
-        run.run_level2_analysis(CONTRAST, files, output, num_permutations=10,
-                                provenance_args=cli_args(output))
-    assert (old / "historical.txt").read_text() == "prior result"
+    argv = ["--contrast", CONTRAST, "--level1-dirs", str(root),
+            "--output-dir", str(output), "--num-permutations", "10"]
+    if allow_dirty:
+        argv.append("--allow-dirty")
+    assert run.main(argv) == 0
+    warned = "WARNING: git working tree is dirty" in capsys.readouterr().err
+    assert warned == (not allow_dirty)
+    manifest = json.loads((old / "run-manifest.json").read_text())
+    assert manifest["code_dirty"] is True
+    assert manifest["code_sha"] == source_sha
+    assert manifest["args"]["allow_dirty"] is allow_dirty
+    assert manifest["args"]["level1_dirs"] == [str(root)]
+    assert [row["path"] for row in manifest["observations"]] == files
+    np.testing.assert_array_equal(nib.load(old / CORRP).get_fdata(), np.ones((3, 3, 3)))
+    previous = list(output.glob(f".{CONTRAST}.previous-*/historical.txt"))
+    assert len(previous) == 1 and previous[0].read_text() == "prior result"
+
+
+@pytest.mark.parametrize("kind", ["4d", "nonfinite", "affine"])
+def test_optional_fsl_maps_do_not_gate_required_products(tmp_path, monkeypatch, fake_randomise, kind):
+    files = [effect(tmp_path / "lev1", "s03"), effect(tmp_path / "lev1", "s20")]
+    extra = save(tmp_path / "extra.nii.gz",
+                 np.ones((3, 3, 3, 2)) if kind == "4d" else
+                 np.full((3, 3, 3), np.nan if kind == "nonfinite" else 1),
+                 np.diag([2, 2, 2, 1]) if kind == "affine" else None)
+    monkeypatch.setenv("TEST_EXTRA_PRODUCT", extra)
+    output = tmp_path / "outputs"
+    assert run.run_level2_analysis(CONTRAST, files, output, num_permutations=10)
+    np.testing.assert_array_equal(nib.load(output / CONTRAST / CORRP).get_fdata(), np.ones((3, 3, 3)))
+    assert (output / CONTRAST / "onesample_2sided_optional.nii.gz").read_bytes() == Path(extra).read_bytes()
+
+
+def test_corrupt_gzip_input_has_source_diagnostic_before_preparation(tmp_path):
+    path = Path(effect(tmp_path / "lev1", "s03"))
+    corrupt_gzip(path)
+    # Confirm the fixture reaches decompression rather than failing format detection.
+    with pytest.raises(zlib.error):
+        nib.load(path).get_fdata()
+    with pytest.raises(ValueError, match="Unreadable group image") as error:
+        run.run_level2_analysis(CONTRAST, [str(path)], tmp_path / "outputs")
+    assert str(path) in str(error.value)
+    assert not (tmp_path / "outputs").exists()
 
 
 def test_published_directory_is_readable_by_the_umask_not_owner_only(tmp_path, fake_randomise):
