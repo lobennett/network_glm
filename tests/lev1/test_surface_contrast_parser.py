@@ -166,6 +166,17 @@ TASKS_WITH_RTDUR = [
     "spatialTS",
     "stopSignal",
     "goNogo",
+    "cuedTSWFlanker",
+    "directedForgettingWCuedTS",
+    "directedForgettingWFlanker",
+    "flankerWShapeMatching",
+    "nBackWShapeMatching",
+    "nBackWSpatialTS",
+    "shapeMatchingWCuedTS",
+    "spatialTSWCuedTS",
+    "spatialTSWShapeMatching",
+    "stopSignalWDirectedForgetting",
+    "stopSignalWFlanker",
 ]
 
 
