@@ -12,7 +12,7 @@ import pytest
 
 from network_glm.lev2 import run
 
-from tests.lev2.helpers import CONTRAST, CORRP, corrupt_gzip, effect, save
+from tests.lev2.helpers import CONTRAST, CORRP, corrupt_gzip, effect, read_fsl_design, save
 
 
 @pytest.mark.parametrize("alias", [False, True])
@@ -140,17 +140,33 @@ def test_disjoint_roots_keep_4d_order_roster_and_two_sided_command(tmp_path, fak
     assert [row["path"] for row in roster] == files
     assert all(row["rt_model"] == "RTDur" for row in roster)
     assert [row["path"] for row in manifest["inputs"]] == files
-    assert (result / "design.con").read_text().split("/Matrix\n")[1].strip() == "1"
-    assert (result / "design.fts").read_text().split("/Matrix\n")[1].strip() == "1.0"
+    for name in ("design.con", "design.fts"):
+        dimensions, matrix = read_fsl_design(result / name)
+        assert dimensions == {"NumWaves": 1, "NumContrasts": 1}
+        np.testing.assert_array_equal(matrix, [[1.0]])
     assert not (result / "design.mat").exists()
     calls = [json.loads(line) for line in fake_randomise.read_text().splitlines()]
     assert len(calls) == 2
     assert {"--seed=42", "-1", "--fonly", "-T"} <= set(calls[0])
     assert calls[0][calls[0].index("-n") + 1] == "10"
     assert "-R" in calls[1] and "--seed=42" not in calls[1]
-    # The relocated script remains usable against the published preparation.
-    script = (result / "randomise_call.sh").read_text()
-    assert str(result / "group_mask.nii.gz") in script
+    for name in (CORRP, "uncorrected_tstat1.nii.gz"):
+        (result / name).unlink()
+    subprocess.run(["bash", "-e", str(result / "randomise_call.sh")],
+                   cwd=tmp_path, capture_output=True, text=True, check=True)
+    replay = [json.loads(line) for line in fake_randomise.read_text().splitlines()][2:]
+    assert len(replay) == 2
+    for call, prefix in zip(replay, ("onesample_2sided", "uncorrected"), strict=True):
+        for flag, name in (("-i", "input_data4d.nii.gz"), ("-m", "group_mask.nii.gz"),
+                           ("-t", "design.con"), ("-o", prefix)):
+            assert Path(call[call.index(flag) + 1]) == result / name
+        assert "-1" in call and "-d" not in call
+    assert Path(replay[0][replay[0].index("-f") + 1]) == result / "design.fts"
+    assert {"--seed=42", "--fonly", "-T"} <= set(replay[0])
+    assert replay[0][replay[0].index("-n") + 1] == "10"
+    assert "-R" in replay[1] and "--seed=42" not in replay[1]
+    for name in (CORRP, "uncorrected_tstat1.nii.gz"):
+        np.testing.assert_array_equal(nib.load(result / name).get_fdata(), np.ones((3, 3, 3)))
 
 
 @pytest.mark.parametrize("mode", ["noop", "fail", "missing-t", "wrong-corrected-name",
@@ -317,11 +333,44 @@ def test_published_directory_is_readable_by_the_umask_not_owner_only(tmp_path, f
     assert (output / CONTRAST).stat().st_mode & 0o777 == 0o777 & ~umask
 
 
-def test_replacement_keeps_the_prior_contrast_directory_mode(tmp_path, fake_randomise):
+@pytest.mark.parametrize("prior_mode, creation_umask", [(0o700, 0o022), (0o750, 0o077)])
+@pytest.mark.parametrize("mode", ["success", "fail", "noop"])
+def test_replacement_keeps_prior_permissions_throughout_attempt(
+    tmp_path, monkeypatch, fake_randomise, prior_mode, creation_umask, mode,
+):
     files = [effect(tmp_path / "lev1", "s03")]
     output = tmp_path / "outputs"
     old = output / CONTRAST
     old.mkdir(parents=True)
-    old.chmod(0o750)
-    assert run.run_level2_analysis(CONTRAST, files, output, num_permutations=10)
-    assert (output / CONTRAST).stat().st_mode & 0o777 == 0o750
+    old.chmod(prior_mode)
+    (old / "historical.txt").write_text("prior result")
+    before = {p.name: p.read_bytes() for p in old.iterdir()}
+    monkeypatch.setenv("TEST_MODE", mode)
+    monkeypatch.setenv("TEST_DIRECTORY_MODE", oct(prior_mode))
+    original_save = nib.Nifti1Image.to_filename
+    observed = []
+
+    def save_with_permissions(image, filename, *args, **kwargs):
+        if Path(filename).name == "group_mask.nii.gz":
+            observed.append(Path(filename).parent.stat().st_mode & 0o7777)
+            assert observed[-1] == prior_mode
+        return original_save(image, filename, *args, **kwargs)
+
+    monkeypatch.setattr(nib.Nifti1Image, "to_filename", save_with_permissions)
+    previous_umask = os.umask(creation_umask)
+    try:
+        assert run.run_level2_analysis(CONTRAST, files, output, num_permutations=10) is (
+            mode == "success"
+        )
+    finally:
+        os.umask(previous_umask)
+    assert observed == [prior_mode]
+    assert old.stat().st_mode & 0o7777 == prior_mode
+    if mode == "success":
+        retained, = output.glob(f".{CONTRAST}.previous-*")
+        assert {p.name: p.read_bytes() for p in retained.iterdir()} == before
+    else:
+        assert {p.name: p.read_bytes() for p in old.iterdir()} == before
+        retained, = output.glob(f".{CONTRAST}.attempt-*")
+        assert (retained / "input_data4d.nii.gz").is_file()
+    assert retained.stat().st_mode & 0o7777 == prior_mode

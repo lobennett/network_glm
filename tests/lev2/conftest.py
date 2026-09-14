@@ -19,7 +19,12 @@ from pathlib import Path
 args = sys.argv[1:]
 with open(os.environ['TEST_ARGV'], 'a') as stream:
     stream.write(json.dumps(args) + '\\n')
-assert Path(args[args.index('-m') + 1]).is_file()
+for flag in ('-i', '-m', '-t', '-f'):
+    if flag in args:
+        assert Path(args[args.index(flag) + 1]).is_file()
+if os.environ.get('TEST_DIRECTORY_MODE'):
+    directory = Path(args[args.index('-i') + 1]).parent
+    assert directory.stat().st_mode & 0o7777 == int(os.environ['TEST_DIRECTORY_MODE'], 8)
 mode = os.environ.get('TEST_MODE', 'success')
 if mode == 'fail' and '--fonly' in args:
     sys.exit(7)

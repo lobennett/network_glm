@@ -23,6 +23,7 @@ from nilearn.image import math_img
 from nilearn.masking import intersect_masks
 
 from network_glm import provenance
+from network_glm.lev2.observations import observation_roster
 
 
 def _load_group_image(path, *, reference=None, shape=None):
@@ -98,40 +99,10 @@ def compute_mask(input_files, threshold=0.9, connected=False):
 
 def _observation_roster(input_files, contrast_name):
     """Validate the volume one-sample identities; preserve the caller's 4D order."""
-    pattern = re.compile(
-        r"(?P<subject>sub-[A-Za-z0-9]+)_task-(?P<task>[^_]+)"
-        r"_contrast-(?P<contrast>.+)_rtmodel-(?P<rt_model>[^_]+)"
-        r"_stat-fixed-effects\.nii\.gz"
-    )
-    roster = []
-    subjects = {}
-    sources = {}
-    for index, filename in enumerate(input_files):
-        path = Path(filename)
-        match = pattern.fullmatch(path.name)
-        if match is None:
-            raise ValueError(f"Cannot identify subject/task/contrast/RT arm in {filename}")
-        row = match.groupdict()
-        resolved = path.resolve()
-        if resolved in sources:
-            raise ValueError(f"Repeated input file: {sources[resolved]} and {filename}")
-        sources[resolved] = str(filename)
-        if f"task-{row['task']}_contrast-{row['contrast']}" != contrast_name:
-            raise ValueError(f"Incompatible task/contrast in {filename}; expected {contrast_name}")
-        # Subject is the BIDS sub- entity, also used by lev1's normalizer. Reject
-        # mislabeled directory/file pairs rather than choosing one identity.
-        parent_subject = next((p.name for p in path.parents if p.name.startswith("sub-")), None)
-        if parent_subject is not None and parent_subject != row["subject"]:
-            raise ValueError(f"Subject directory disagrees with filename: {filename}")
-        if row["subject"] in subjects:
-            raise ValueError(
-                f"Duplicate subject {row['subject']}: {subjects[row['subject']]} and {filename}"
-            )
-        if roster and row["rt_model"] != roster[0]["rt_model"]:
-            raise ValueError(f"Mixed RT model arms: {roster[0]['path']} and {filename}")
-        subjects[row["subject"]] = str(filename)
-        roster.append({"volume_index": index, **row, "path": str(filename)})
-    return roster
+    return [
+        {"volume_index": index, **row}
+        for index, row in enumerate(observation_roster(input_files, contrast_name))
+    ]
 
 
 def discover_input_files(level1_dirs: list[Path], contrast_name: str) -> list[str]:
@@ -340,9 +311,12 @@ def run_level2_analysis(
     output_dir.mkdir(parents=True, exist_ok=True)
     contrast_output_dir = output_dir / contrast_name
     attempt_dir = output_dir / f".{contrast_name}.attempt-{uuid4().hex}"
-    # Plain mkdir so the published directory keeps the umask-derived mode the
-    # contrast directory has always had; tempfile.mkdtemp would force 0700.
-    attempt_dir.mkdir()
+    if contrast_output_dir.exists():
+        mode = contrast_output_dir.stat().st_mode & 0o7777
+        attempt_dir.mkdir(mode=mode)
+        attempt_dir.chmod(mode)
+    else:
+        attempt_dir.mkdir()
     print(f"Attempt directory (retained on failure): {attempt_dir}")
     group_mask_path = attempt_dir / "group_mask.nii.gz"
     group_mask_img.to_filename(group_mask_path)
@@ -422,7 +396,6 @@ def run_level2_analysis(
     script.write_text(script.read_text().replace(str(attempt_dir), str(contrast_output_dir)))
     previous = None
     if contrast_output_dir.exists():
-        attempt_dir.chmod(contrast_output_dir.stat().st_mode & 0o7777)
         previous = output_dir / f".{contrast_name}.previous-{uuid4().hex}"
         contrast_output_dir.rename(previous)
     try:
@@ -616,26 +589,26 @@ def main(argv=None) -> None:
     # Discover input files for the specific contrast. Surface and volume use
     # different fixed-effects file types (.func.gii vs .nii.gz) and engines.
     print(f"Discovering input files for contrast: {args.contrast} (space={args.space})")
-    if args.space == "surface":
-        from network_glm.lev2.surface import (
-            discover_surface_inputs,
-            run_surface_level2_analysis,
-        )
+    try:
+        if args.space == "surface":
+            from network_glm.lev2.surface import (
+                discover_surface_inputs,
+                run_surface_level2_analysis,
+            )
 
-        surf = discover_surface_inputs(level1_dirs, args.contrast)
-        input_files = surf["L"] + surf["R"]
-        if not input_files:
-            print(f"ERROR: No surface input files found for contrast {args.contrast}")
-            return 1
-        ok = run_surface_level2_analysis(
-            args.contrast,
-            level1_dirs,
-            output_dir,
-            n_perm=args.num_permutations,
-            seed=args.seed,
-        )
-    else:
-        try:
+            surf = discover_surface_inputs(level1_dirs, args.contrast)
+            input_files = surf["L"] + surf["R"]
+            if not input_files:
+                print(f"ERROR: No surface input files found for contrast {args.contrast}")
+                return 1
+            ok = run_surface_level2_analysis(
+                args.contrast,
+                level1_dirs,
+                output_dir,
+                n_perm=args.num_permutations,
+                seed=args.seed,
+            )
+        else:
             input_files = discover_input_files(level1_dirs, args.contrast)
             if not input_files:
                 print(f"ERROR: No input files found for contrast {args.contrast}")
@@ -645,9 +618,9 @@ def main(argv=None) -> None:
                 args.num_permutations, seed=args.seed,
                 provenance_args=args, level1_dirs=level1_dirs,
             )
-        except ValueError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 1
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     if not ok:
         # The analysis failed (e.g. randomise errored). Do NOT stamp a success
         # provenance manifest; propagate a non-zero exit so the SLURM array

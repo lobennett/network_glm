@@ -1,12 +1,22 @@
 """Public synthetic NIfTI fixtures for group-analysis tests."""
 
 import gzip
+from io import StringIO
 
 import nibabel as nib
 import numpy as np
 
 CONTRAST = "task-rest_contrast-task"
 CORRP = "onesample_2sided_tfce_corrp_fstat1.nii.gz"
+
+
+def read_fsl_design(path):
+    """Normalize the dimensions and numeric matrix of a generated FSL VEST file."""
+    header, matrix = path.read_text().split("/Matrix", 1)
+    fields = [line.split() for line in header.splitlines() if line.strip()]
+    headers = {key.lstrip("/"): values for key, *values in fields}
+    dimensions = {key: int(headers[key][0]) for key in ("NumWaves", "NumContrasts")}
+    return dimensions, np.loadtxt(StringIO(matrix), ndmin=2)
 
 
 def save(path, data=None, affine=None):

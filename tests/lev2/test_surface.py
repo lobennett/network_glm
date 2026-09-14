@@ -4,7 +4,9 @@ from pathlib import Path
 
 import nibabel as nib
 import numpy as np
+import pytest
 
+from network_glm.lev2 import run
 from network_glm.lev2.surface import (
     discover_surface_inputs,
     run_surface_level2_analysis,
@@ -22,15 +24,15 @@ def _write_gii(path: Path, vec: np.ndarray) -> None:
     nib.save(nib.GiftiImage(darrays=[d]), str(path))
 
 
-def _fe_name(sub, hemi, below=False):
+def _fe_name(sub, hemi, below=False, arm="RTDur"):
     desc = "_desc-belowMinRuns" if below else ""
     return (
-        f"{sub}_hemi-{hemi}_space-fsaverage6_{CONTRAST}_rtmodel-RTDur"
+        f"{sub}_hemi-{hemi}_space-fsaverage6_{CONTRAST}_rtmodel-{arm}"
         f"{desc}_stat-fixed-effects.func.gii"
     )
 
 
-def _make_lev1(tmp_path, subjects, n_vert=6, signal_vertex=0, signal=3.0, seed=1):
+def _make_lev1(tmp_path, subjects, n_vert=6, signal_vertex=0, signal=3.0, seed=1, arm="RTDur"):
     """Build a lev1 dir with per-subject L/R surface fixed-effects effect maps.
     A strong positive group effect is planted at signal_vertex."""
     rng = np.random.RandomState(seed)
@@ -40,7 +42,7 @@ def _make_lev1(tmp_path, subjects, n_vert=6, signal_vertex=0, signal=3.0, seed=1
             vec = rng.randn(n_vert) * 0.3
             vec[signal_vertex] += signal
             fe_dir = lev1 / sub / "task-flanker" / "fixed_effects"
-            _write_gii(fe_dir / _fe_name(sub, hemi), vec)
+            _write_gii(fe_dir / _fe_name(sub, hemi, arm=arm), vec)
     return lev1
 
 
@@ -87,6 +89,96 @@ def test_discover_drops_below_min_runs(tmp_path):
     found = discover_surface_inputs([lev1], CONTRAST)
     assert len(found["L"]) == 2 and len(found["R"]) == 2
     assert not any("belowMinRuns" in f for f in found["L"])
+
+
+@pytest.mark.parametrize("kind", [
+    "repeated-root", "root-alias", "duplicate-subject", "same-root-subject",
+    "mixed-roots", "mixed-subjects", "mixed-hemispheres", "file-alias", "subject-directory",
+])
+def test_invalid_surface_observations_fail_discovery_direct_api_and_cli(tmp_path, capsys, kind):
+    root = _make_lev1(tmp_path / "a", ["sub-s03", "sub-s10"])
+    roots = [root]
+    first = root / "sub-s03/task-flanker/fixed_effects" / _fe_name("sub-s03", "L")
+    paths = [first]
+    if kind in {"repeated-root", "root-alias"}:
+        second = root
+        if kind == "root-alias":
+            second = tmp_path / "alias"
+            second.symlink_to(root, target_is_directory=True)
+        roots.append(second)
+        paths = roots
+        message = "Repeated level1 root"
+    elif kind in {"duplicate-subject", "same-root-subject", "mixed-roots", "mixed-subjects"}:
+        duplicate = kind in {"duplicate-subject", "same-root-subject"}
+        same_root = kind in {"same-root-subject", "mixed-subjects"}
+        subject = "sub-s03" if duplicate else "sub-s20"
+        arm = "RTDur" if kind == "duplicate-subject" else "noRT"
+        second_root = _make_lev1(tmp_path / ("a" if same_root else "b"), [subject], arm=arm)
+        if not same_root:
+            roots.append(second_root)
+        paths.append(second_root / subject / "task-flanker/fixed_effects"
+                     / _fe_name(subject, "L", arm=arm))
+        message = "Duplicate subject" if duplicate else "Mixed RT model arms"
+    elif kind == "mixed-hemispheres":
+        for subject in ("sub-s03", "sub-s10"):
+            right = root / subject / "task-flanker/fixed_effects" / _fe_name(subject, "R")
+            right.rename(right.with_name(_fe_name(subject, "R", arm="noRT")))
+        paths.append(root / "sub-s03/task-flanker/fixed_effects"
+                     / _fe_name("sub-s03", "R", arm="noRT"))
+        message = "Mixed RT model arms"
+    else:
+        second = root / "sub-s10/task-flanker/fixed_effects" / _fe_name("sub-s10", "L")
+        if kind == "file-alias":
+            second.unlink()
+            second.symlink_to(first)
+            paths.append(second)
+            message = "Repeated input file"
+        else:
+            renamed = second.with_name(_fe_name("sub-s20", "L"))
+            second.rename(renamed)
+            paths = [renamed]
+            message = "Subject directory disagrees"
+
+    with pytest.raises(ValueError, match=message) as error:
+        discover_surface_inputs(roots, CONTRAST)
+    assert all(str(path) in str(error.value) for path in paths)
+    output = tmp_path / "outputs"
+    with pytest.raises(ValueError, match=message):
+        run_surface_level2_analysis(CONTRAST, roots, output, n_perm=10)
+    assert not output.exists()
+    assert run.main(["--space", "surface", "--contrast", CONTRAST,
+                     "--level1-dirs", *map(str, roots), "--output-dir", str(output),
+                     "--num-permutations", "10", "--allow-dirty"]) == 1
+    assert message in capsys.readouterr().err
+    assert not output.exists()
+
+
+def test_disjoint_surface_roots_preserve_order_and_cli_numerical_results(tmp_path):
+    subjects = [f"sub-s{n:02d}" for n in range(1, 9)]
+    first = _make_lev1(tmp_path / "a", subjects)
+    reference = tmp_path / "reference"
+    assert run_surface_level2_analysis(CONTRAST, [first], reference, n_perm=80, seed=42)
+    second = tmp_path / "b/lev1"
+    second.mkdir(parents=True)
+    for subject in subjects[4:]:
+        (first / subject).rename(second / subject)
+    found = discover_surface_inputs([second, first], CONTRAST)
+    for hemi in ("L", "R"):
+        assert found[hemi] == [
+            str((first if i < 4 else second) / subject / "task-flanker/fixed_effects"
+                / _fe_name(subject, hemi)) for i, subject in enumerate(subjects)
+        ]
+    output = tmp_path / "outputs"
+    assert run.main(["--space", "surface", "--contrast", CONTRAST,
+                     "--level1-dirs", str(second), str(first), "--output-dir", str(output),
+                     "--num-permutations", "80", "--seed", "42", "--allow-dirty"]) == 0
+    for hemi in ("L", "R"):
+        for stat in ("group-t", "fwe-p"):
+            name = f"{CONTRAST}_hemi-{hemi}_stat-{stat}.func.gii"
+            np.testing.assert_array_equal(
+                nib.load(output / CONTRAST / name).darrays[0].data,
+                nib.load(reference / CONTRAST / name).darrays[0].data,
+            )
 
 
 def test_run_surface_level2_writes_per_hemi_maps(tmp_path):
