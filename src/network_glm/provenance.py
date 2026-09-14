@@ -10,11 +10,7 @@ and the paths and counts of what it consumed:
 - a machine-readable ``run-manifest.json`` plus a minimal valid BIDS
   ``dataset_description.json`` for derivative trees.
 
-This module is the canonical home of the git-SHA helper. ``exclusions.base``
-re-exports it as ``_git_sha`` so the committed exclusions lockfiles stay
-byte-identical and all existing importers keep working (DRY, behavior-preserving).
-
-PR4a adds the primitive + tests only; wiring it into lev1/lev2 is a later PR.
+Level 1 and level 2 wire these primitives into their existing run manifests.
 """
 
 from __future__ import annotations
@@ -39,7 +35,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ISO_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 # Sensible default tool set recorded when a caller doesn't name packages.
-_DEFAULT_TOOLS = ["neuro-workflow", "numpy", "nibabel", "nilearn", "pandas", "scipy"]
+_DEFAULT_TOOLS = ["network_glm", "numpy", "nibabel", "nilearn", "pandas", "scipy"]
 
 
 def _now_iso() -> str:
@@ -309,7 +305,7 @@ def write_dataset_description(
         output_dir: directory to write into (created).
         name: dataset Name field.
         pipeline_version: Version recorded under GeneratedBy (defaults to the
-            installed ``neuro-workflow`` package version, else "unknown").
+            installed ``network_glm`` package version, else "unknown").
         source_datasets: BIDS SourceDatasets list (defaults to []).
 
     Returns:
@@ -317,7 +313,7 @@ def write_dataset_description(
     """
     if pipeline_version is None:
         try:
-            pipeline_version = _ilmd.version("neuro-workflow")
+            pipeline_version = _ilmd.version("network_glm")
         except _ilmd.PackageNotFoundError:
             pipeline_version = "unknown"
 
@@ -327,7 +323,7 @@ def write_dataset_description(
         "DatasetType": "derivative",
         "GeneratedBy": [
             {
-                "Name": "neuro-workflow",
+                "Name": "network_glm",
                 "Version": pipeline_version,
                 "CodeURL": f"git:{git_sha()}",
             }

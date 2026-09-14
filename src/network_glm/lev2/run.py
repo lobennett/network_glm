@@ -2,22 +2,53 @@
 """Level 2 GLM Analysis script for group-level statistical analysis."""
 
 # Note: `randomise_prep` is lazy-imported inside run_level2_analysis (the only
-# call site). Module-level import would force test environments without the
-# `lev1` extras installed to fail at import time, even when only testing
+# call site). Module-level import would force environments without that
+# dependency installed to fail at import time, even when only testing
 # helpers like discover_input_files. Lazy import surfaces a clear
 # ModuleNotFoundError when randomise actually gets called in production.
 
 import argparse
 import glob
 import json
+import re
 import subprocess
 import sys
+import zlib
 from pathlib import Path
+from uuid import uuid4
 
+import nibabel as nib
+import numpy as np
 from nilearn.image import math_img
 from nilearn.masking import intersect_masks
 
 from network_glm import provenance
+from network_glm.lev2.observations import observation_roster
+
+
+def _load_group_image(path, *, reference=None, shape=None):
+    """Read a consumed/generated image without sanitizing invalid voxel values."""
+    try:
+        img = nib.load(path)
+        data = img.get_fdata()
+    except (OSError, EOFError, ValueError, zlib.error, nib.filebasedimages.ImageFileError) as exc:
+        raise ValueError(f"Unreadable group image {path}: {exc}") from exc
+    if (shape is None and img.ndim != 3) or (shape is not None and img.shape != shape):
+        raise ValueError(f"Invalid shape {img.shape} in {path}; expected {shape or '3D'}")
+    if not np.isfinite(img.affine).all():
+        raise ValueError(f"Nonfinite affine in {path}")
+    if reference is not None and (
+        img.shape[:3] != reference.shape[:3]
+        or not np.allclose(img.affine, reference.affine)
+    ):
+        raise ValueError(f"Incompatible shape/affine in {path}; expected input-map geometry")
+    invalid = ~np.isfinite(data)
+    if invalid.any():
+        first = tuple(int(i) for i in np.argwhere(invalid)[0])
+        raise ValueError(
+            f"{path}: {np.count_nonzero(invalid)} nonfinite voxels; first at {first}"
+        )
+    return img
 
 
 def compute_mask(input_files, threshold=0.9, connected=False):
@@ -35,7 +66,7 @@ def compute_mask(input_files, threshold=0.9, connected=False):
     threshold : float, optional
         The proportion of masks in which a voxel must be active to be
         included in the final mask. Default 0.9 (voxel must be present in
-        >=90% of subject masks), matching the lev2 CLI default. 1.0 would be
+        >90% of subject masks), matching the lev2 CLI default. 1.0 would be
         a strict intersection (voxel must be in all masks).
     connected : bool, optional
         If True, only the largest connected component of the final mask is
@@ -52,12 +83,26 @@ def compute_mask(input_files, threshold=0.9, connected=False):
         The combined group mask image.
     """
     print("== Generating a mask for each of the input files ==")
-    subject_masks = [math_img("img != 0", img=f) for f in input_files]
+    subject_masks = []
+    reference = None
+    for path in input_files:
+        img = _load_group_image(path, reference=reference)
+        if reference is None:
+            reference = img
+        subject_masks.append(math_img("img != 0", img=img))
 
     print("== Intersecting subject masks to create the final group mask ==")
     group_mask = intersect_masks(subject_masks, threshold=threshold, connected=connected)
 
     return group_mask
+
+
+def _observation_roster(input_files, contrast_name):
+    """Validate the volume one-sample identities; preserve the caller's 4D order."""
+    return [
+        {"volume_index": index, **row}
+        for index, row in enumerate(observation_roster(input_files, contrast_name))
+    ]
 
 
 def discover_input_files(level1_dirs: list[Path], contrast_name: str) -> list[str]:
@@ -78,8 +123,16 @@ def discover_input_files(level1_dirs: list[Path], contrast_name: str) -> list[st
     """
     all_files: list[str] = []
     n_dropped = 0
+    roots = {}
 
     for level1_dir in level1_dirs:
+        resolved = Path(level1_dir).resolve()
+        if resolved in roots:
+            previous_root, repeated_files = roots[resolved]
+            raise ValueError(
+                f"Repeated level1 root: {previous_root} and {level1_dir}; "
+                f"repeated observations: {', '.join(repeated_files) or '(none)'}"
+            )
         pattern = (
             level1_dir
             / "sub-*"
@@ -89,6 +142,7 @@ def discover_input_files(level1_dirs: list[Path], contrast_name: str) -> list[st
         )
         files = glob.glob(str(pattern))
         kept = [f for f in files if "_desc-belowMinRuns_" not in f]
+        roots[resolved] = (level1_dir, sorted(kept))
         n_dropped += len(files) - len(kept)
         all_files.extend(kept)
 
@@ -98,7 +152,9 @@ def discover_input_files(level1_dirs: list[Path], contrast_name: str) -> list[st
             f"_desc-belowMinRuns files for contrast {contrast_name}"
         )
 
-    return sorted(all_files)
+    files = sorted(all_files)
+    _observation_roster(files, contrast_name)
+    return files
 
 
 def _input_manifest_path(input_file: str | Path) -> Path:
@@ -217,12 +273,21 @@ def run_level2_analysis(
     mask_threshold: float = 0.9,
     num_permutations: int = 5000,
     seed: int = 0,
+    *,
+    provenance_args=None,
+    level1_dirs=None,
 ) -> bool:
     """Run level 2 analysis for a specific contrast.
 
     Returns True on success, False if there were no inputs or randomise failed
     (so the caller can propagate the failure instead of silently exiting 0 and
-    stamping a success provenance manifest).
+    stamping a success provenance manifest). Invalid input identities/maps raise
+    ValueError before outputs are created. Failed attempts and prior successful
+    directories remain available for inspection. Provenance is staged with the
+    products before publication when ``provenance_args`` carries a real
+    invocation (``main`` always passes its parsed CLI args); a direct library
+    call that supplies none simply gets no ``run-manifest.json`` rather than one
+    describing an invocation that never happened.
 
     ``seed`` pins FSL randomise's permutation RNG for reproducibility. It is
     forwarded only if the installed ``setup_randomise_tfce`` accepts a ``seed``
@@ -236,27 +301,35 @@ def run_level2_analysis(
         print(f"Error: No input files found for contrast {contrast_name}")
         return False
 
-    contrast_output_dir = output_dir / contrast_name
-    contrast_output_dir.mkdir(parents=True, exist_ok=True)
-
+    _observation_roster(input_files, contrast_name)
     print("Computing group analysis mask...")
     group_mask_img = compute_mask(input_files, threshold=mask_threshold)
-    group_mask_path = contrast_output_dir / "group_mask.nii.gz"
+
+    # Validate before creating any output. Each attempt owns its mask and all
+    # preparation/statistics; earlier published results cannot satisfy its checks.
+    output_dir = Path(output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    contrast_output_dir = output_dir / contrast_name
+    attempt_dir = output_dir / f".{contrast_name}.attempt-{uuid4().hex}"
+    if contrast_output_dir.exists():
+        mode = contrast_output_dir.stat().st_mode & 0o7777
+        attempt_dir.mkdir(mode=mode)
+        attempt_dir.chmod(mode)
+    else:
+        attempt_dir.mkdir()
+    print(f"Attempt directory (retained on failure): {attempt_dir}")
+    group_mask_path = attempt_dir / "group_mask.nii.gz"
     group_mask_img.to_filename(group_mask_path)
     print(f"--> Group mask saved to: {group_mask_path}")
 
     print("Setting up FSL randomise...")
-    # Lazy import so test environments without the lev1 extras installed
-    # can still import + exercise the helpers in this module. In production
-    # randomise_prep is in the lev1 extras group; install it via
-    # `uv pip install "randomise-prep @ git+https://github.com/jmumford/randomise-prep.git"`
-    # if missing. Failure here surfaces a clear ModuleNotFoundError.
+    # The dependency is pinned in pyproject.toml/uv.lock; use uv sync --frozen.
     from randomise_prep import setup_randomise_tfce
 
     randomise_kwargs = dict(
         input_files=input_files,
         group_mask=str(group_mask_path),
-        output_directory=str(contrast_output_dir),
+        output_directory=str(attempt_dir),
         analysis_type="onesample_2sided",
         num_perm=num_permutations,
     )
@@ -291,18 +364,51 @@ def run_level2_analysis(
         print(f"Stderr: {e.stderr}")
         return False
 
-    # Belt and braces: a zero exit is not proof the corrected maps exist, and an
-    # uncorrected-only result silently published as a group map is the worst outcome here.
-    corrp = sorted(contrast_output_dir.glob("*corrp*.nii.gz"))
-    if not corrp:
-        print(f"✗ FSL randomise produced no corrected p-value map in "
-              f"{contrast_output_dir}; refusing to report success. "
-              f"Check {contrast_output_dir / 'randomise_call.sh'}.")
+    # Both generated invocations must produce their expected scientific product.
+    # Only these four products have contracts here; optional FSL maps may vary.
+    try:
+        products = {
+            attempt_dir / name for name in (
+                "onesample_2sided_tfce_corrp_fstat1.nii.gz", "uncorrected_tstat1.nii.gz",
+                "group_mask.nii.gz", "input_data4d.nii.gz",
+            )
+        }
+        for path in sorted(products):
+            shape = (
+                (*group_mask_img.shape, len(input_files))
+                if path.name == "input_data4d.nii.gz" else None
+            )
+            _load_group_image(path, reference=group_mask_img, shape=shape)
+    except ValueError as exc:
+        print(f"✗ Invalid FSL randomise products: {exc}")
         return False
 
+    if provenance_args is not None:
+        # The volume CLI warns and proceeds on dirty source. Preserve the real
+        # args and code_dirty stamp without rejecting otherwise valid products.
+        _write_lev2_provenance(
+            attempt_dir, provenance_args, level1_dirs or [], input_files, allow_dirty=True,
+        )
+
+    # The helper writes absolute preparation paths. Relocate those paths so the
+    # published script still refers to its own mask/design/data, keeping all flags.
+    script = Path(script_path)
+    script.write_text(script.read_text().replace(str(attempt_dir), str(contrast_output_dir)))
+    previous = None
+    if contrast_output_dir.exists():
+        previous = output_dir / f".{contrast_name}.previous-{uuid4().hex}"
+        contrast_output_dir.rename(previous)
+    try:
+        attempt_dir.rename(contrast_output_dir)
+    except OSError:
+        if previous is not None:
+            previous.rename(contrast_output_dir)
+        raise
+
     print("✓ FSL randomise completed successfully")
-    print(f"  corrected maps: {', '.join(p.name for p in corrp)}")
     print(f"Results saved to: {contrast_output_dir}")
+    if previous is not None:
+        print(f"Previous results preserved at: {previous}")
     return True
 
 
@@ -394,7 +500,7 @@ def _warn_if_inconsistent_inputs(input_provenance: dict) -> None:
     )
 
 
-def _write_lev2_provenance(output_dir, args, level1_dirs, input_files):
+def _write_lev2_provenance(output_dir, args, level1_dirs, input_files, *, allow_dirty=None):
     """Write additive provenance for a lev2 contrast run.
 
     - ``dataset_description.json`` at ``output_dir``, naming the lev1 source
@@ -406,10 +512,13 @@ def _write_lev2_provenance(output_dir, args, level1_dirs, input_files):
       those inputs. A loud stderr WARNING fires if that summary is inconsistent
       (mixed exclusion sets / code versions / configs). Selection is unchanged.
 
-    Called AFTER the contrast's scientific outputs; errors are allowed to
-    surface (fail loud). ``allow_dirty`` is threaded from the CLI flag.
+    Called after the scientific products are written, within the fresh attempt
+    for volume runs. Errors surface before publication. By default ``allow_dirty``
+    follows the CLI flag; the staged volume caller explicitly permits recording
+    dirty source to preserve its documented warn-and-proceed policy.
     """
-    allow_dirty = getattr(args, "allow_dirty", False)
+    if allow_dirty is None:
+        allow_dirty = getattr(args, "allow_dirty", False)
     provenance.write_dataset_description(
         output_dir,
         name="lev2",
@@ -434,6 +543,8 @@ def _write_lev2_provenance(output_dir, args, level1_dirs, input_files):
     # merge the lev2-specific block in here rather than widen the primitive.
     manifest = json.loads(manifest_path.read_text())
     manifest["input_provenance"] = input_provenance
+    if getattr(args, "space", "volume") == "volume":
+        manifest["observations"] = _observation_roster(input_files, args.contrast)
     # External (non-pip) tool versions. nilearn/numpy/scipy are already in the
     # manifest's tool_versions; FSL (the volume randomise engine) is not a Python
     # package, so record it explicitly. "unknown" when FSL is absent (e.g. the
@@ -469,8 +580,6 @@ def main(argv=None) -> None:
         )
 
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     level1_dirs = [Path(d) for d in args.level1_dirs]
     for level1_dir in level1_dirs:
         if not level1_dir.exists():
@@ -480,37 +589,38 @@ def main(argv=None) -> None:
     # Discover input files for the specific contrast. Surface and volume use
     # different fixed-effects file types (.func.gii vs .nii.gz) and engines.
     print(f"Discovering input files for contrast: {args.contrast} (space={args.space})")
-    if args.space == "surface":
-        from network_glm.lev2.surface import (
-            discover_surface_inputs,
-            run_surface_level2_analysis,
-        )
+    try:
+        if args.space == "surface":
+            from network_glm.lev2.surface import (
+                discover_surface_inputs,
+                run_surface_level2_analysis,
+            )
 
-        surf = discover_surface_inputs(level1_dirs, args.contrast)
-        input_files = surf["L"] + surf["R"]
-        if not input_files:
-            print(f"ERROR: No surface input files found for contrast {args.contrast}")
-            return 1
-        ok = run_surface_level2_analysis(
-            args.contrast,
-            level1_dirs,
-            output_dir,
-            n_perm=args.num_permutations,
-            seed=args.seed,
-        )
-    else:
-        input_files = discover_input_files(level1_dirs, args.contrast)
-        if not input_files:
-            print(f"ERROR: No input files found for contrast {args.contrast}")
-            return 1
-        ok = run_level2_analysis(
-            args.contrast,
-            input_files,
-            output_dir,
-            args.mask_threshold,
-            args.num_permutations,
-            seed=args.seed,
-        )
+            surf = discover_surface_inputs(level1_dirs, args.contrast)
+            input_files = surf["L"] + surf["R"]
+            if not input_files:
+                print(f"ERROR: No surface input files found for contrast {args.contrast}")
+                return 1
+            ok = run_surface_level2_analysis(
+                args.contrast,
+                level1_dirs,
+                output_dir,
+                n_perm=args.num_permutations,
+                seed=args.seed,
+            )
+        else:
+            input_files = discover_input_files(level1_dirs, args.contrast)
+            if not input_files:
+                print(f"ERROR: No input files found for contrast {args.contrast}")
+                return 1
+            ok = run_level2_analysis(
+                args.contrast, input_files, output_dir, args.mask_threshold,
+                args.num_permutations, seed=args.seed,
+                provenance_args=args, level1_dirs=level1_dirs,
+            )
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     if not ok:
         # The analysis failed (e.g. randomise errored). Do NOT stamp a success
         # provenance manifest; propagate a non-zero exit so the SLURM array
@@ -518,14 +628,11 @@ def main(argv=None) -> None:
         print(f"ERROR: Level 2 analysis failed for {args.contrast}", file=sys.stderr)
         return 1
 
-    # Provenance (ADDITIVE) — written AFTER the contrast's scientific outputs so
-    # a manifest error never loses science. Errors are allowed to surface.
-    # Written INTO the per-contrast output dir (matching where
-    # run_level2_analysis put its scientific outputs), so that the SLURM array
-    # — one contrast per task, all sharing --output-dir — does not race/clobber
-    # a single manifest at the results-dir root.
+    # Volume provenance was published with the validated attempt. The surface
+    # path retains its existing additive per-contrast provenance writer.
     contrast_output_dir = output_dir / args.contrast
-    _write_lev2_provenance(contrast_output_dir, args, level1_dirs, input_files)
+    if args.space == "surface":
+        _write_lev2_provenance(contrast_output_dir, args, level1_dirs, input_files)
 
     print(f"\nLevel 2 GLM analysis completed for {args.contrast}")
     return 0

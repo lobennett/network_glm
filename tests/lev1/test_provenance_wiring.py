@@ -48,12 +48,12 @@ def test_collect_run_inputs_volumetric(tmp_path):
             }
         }
     }
-    inputs = _collect_run_inputs(files)
+    inputs = _collect_run_inputs(files, "MNI")
     assert ev in inputs
     assert cf in inputs
     assert bold in inputs
-    # masks are derived/intermediate, not a study input we hash here
-    assert (tmp_path / "mask.nii.gz") not in inputs
+    # fMRIPrep masks are consumed by the fit and combined-mask construction.
+    assert (tmp_path / "mask.nii.gz") in inputs
 
 
 def test_collect_run_inputs_surface_both_hemis(tmp_path):
@@ -75,7 +75,7 @@ def test_collect_run_inputs_surface_both_hemis(tmp_path):
             }
         }
     }
-    inputs = _collect_run_inputs(files)
+    inputs = _collect_run_inputs(files, "surface")
     assert set(inputs) >= {ev, cf, lh, rh}
 
 
@@ -94,7 +94,7 @@ def test_collect_run_inputs_dedupes_and_orders(tmp_path):
         "ses-01": {"run-1": {"events": ev1, "confounds": cf1, "mni_data": b1}},
         "ses-02": {"run-1": {"events": ev2, "confounds": cf2, "mni_data": b2}},
     }
-    inputs = _collect_run_inputs(files)
+    inputs = _collect_run_inputs(files, "MNI")
     assert set(inputs) == {ev1, cf1, b1, ev2, cf2, b2}
     assert len(inputs) == len(set(inputs))  # no duplicates
     # deterministic ordering

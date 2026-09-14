@@ -16,16 +16,15 @@ Inputs are the per-subject surface fixed-effects effect maps produced by lev1:
 from __future__ import annotations
 
 import glob
-import re
 from pathlib import Path
 
 import nibabel as nib
 import numpy as np
 
 from network_glm.lev1.processing.surface_data import load_surface_stat_map
+from network_glm.lev2.observations import observation_roster
 
 HEMIS = ("L", "R")
-_SUBJECT_RE = re.compile(r"(sub-[A-Za-z0-9]+)_")
 
 
 def discover_surface_inputs(level1_dirs: list[Path], contrast_name: str) -> dict[str, list[str]]:
@@ -33,9 +32,16 @@ def discover_surface_inputs(level1_dirs: list[Path], contrast_name: str) -> dict
 
     Drops ``_desc-belowMinRuns_`` files (subjects with too few retained runs),
     exactly like the volumetric :func:`.run.discover_input_files`.
+    Repeated roots/files, duplicate subjects within a hemisphere, and mixed
+    RT arms across either hemisphere raise ValueError before analysis.
     """
     out: dict[str, list[str]] = {h: [] for h in HEMIS}
+    roots = {}
     for level1_dir in level1_dirs:
+        resolved = Path(level1_dir).resolve()
+        if resolved in roots:
+            raise ValueError(f"Repeated level1 root: {roots[resolved]} and {level1_dir}")
+        roots[resolved] = level1_dir
         for h in HEMIS:
             pattern = str(
                 Path(level1_dir)
@@ -48,14 +54,8 @@ def discover_surface_inputs(level1_dirs: list[Path], contrast_name: str) -> dict
             out[h].extend(files)
     for h in HEMIS:
         out[h] = sorted(out[h])
+    observation_roster(out["L"] + out["R"], contrast_name, surface=True)
     return out
-
-
-def _subject_of(path: str) -> str:
-    m = _SUBJECT_RE.search(Path(path).name)
-    if not m:
-        raise ValueError(f"Cannot parse subject from surface input filename: {path}")
-    return m.group(1)
 
 
 def load_surface_stack(files: list[str]) -> np.ndarray:
@@ -147,6 +147,7 @@ def run_surface_level2_analysis(
 
     Returns True on success, False if inputs are missing/inconsistent (so the
     caller can propagate the failure without stamping a success manifest).
+    Invalid observation identities raise ValueError during discovery.
     """
     inputs = discover_surface_inputs(level1_dirs, contrast_name)
     n_l, n_r = len(inputs["L"]), len(inputs["R"])
@@ -155,8 +156,8 @@ def run_surface_level2_analysis(
         print(f"Error: missing surface inputs for {contrast_name} (L={n_l}, R={n_r})")
         return False
 
-    subj_l = [_subject_of(f) for f in inputs["L"]]
-    subj_r = [_subject_of(f) for f in inputs["R"]]
+    subj_l = [Path(f).name.split("_", 1)[0] for f in inputs["L"]]
+    subj_r = [Path(f).name.split("_", 1)[0] for f in inputs["R"]]
     if subj_l != subj_r:
         print(f"Error: L/R subject sets differ for {contrast_name}: " f"L={subj_l} R={subj_r}")
         return False

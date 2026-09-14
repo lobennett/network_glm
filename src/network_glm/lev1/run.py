@@ -8,6 +8,7 @@ This module is the CLI only; the work is split across sibling modules:
 """
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -23,22 +24,28 @@ from network_glm.lev1.runner import (
 )
 from network_glm.task_config.loader import RT_MODELS, get_task_parameters
 from network_glm import provenance
+from network_glm.acquisition import sidecar_path_for
+from network_glm.lev1.spaces import is_cifti_space, is_surface_space
 
 logger = logging.getLogger(__name__)
 
-# fMRIPrep/BIDS file-type keys (in the discovered `files` dict) that represent
-# ACTUAL study inputs consumed by the GLM, and should be hashed into the
-# run-manifest. Masks are derived intermediates (re-created per run), so they
-# are intentionally excluded.
-_INPUT_FILE_KEYS = (
-    "events",
-    "confounds",
-    "mni_data",
-    "t1w_data",
-    "left_surface",
-    "right_surface",
-    "cifti_bold",
-)
+
+def _consumed_file_keys(space):
+    """Keys in the discovered ``files`` dict that the fit for ``space`` reads.
+
+    ``FileFinder.get_files`` stores every pattern it matches, so a run's dict
+    routinely carries BOLD/masks for spaces this invocation never touched.
+    Returns ``(keys, timing_key)`` where ``timing_key`` is the BOLD whose
+    sidecar ``process_single_run`` reads for the slice-timing reference.
+    """
+    if is_cifti_space(space):
+        timing_key, extra = "cifti_bold", ()
+    elif is_surface_space(space):
+        timing_key, extra = "left_surface", ("right_surface",)
+    else:
+        timing_key = f"{space.lower()}_data"
+        extra = (f"{space.lower()}_brain_mask",)
+    return ("events", "confounds", timing_key, *extra), timing_key
 
 
 def _positive_int(value: str) -> int:
@@ -206,26 +213,59 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _collect_run_inputs(files):
+def _collect_run_inputs(files, space, *, combined_mask_path=None):
     """Flatten the discovered ``files`` dict into the list of ACTUAL inputs.
 
     ``files`` is ``{session: {run: {file_type: Path}}}`` (see
-    :class:`~network_glm.io.file_discovery.FileFinder`). We hash the
-    study inputs the GLM actually consumes — events, confounds, and the BOLD
-    timeseries for whichever space ran (``mni_data`` / ``t1w_data`` /
-    ``left_surface`` + ``right_surface`` / ``cifti_bold``). Brain masks are
-    derived intermediates (re-created per run) and are intentionally omitted.
+    :class:`~network_glm.io.file_discovery.FileFinder`). We hash only what the
+    GLM for ``space`` consumes — events, confounds, that space's BOLD and
+    fMRIPrep brain mask, and the timing sidecar ``process_single_run`` read.
+    Surface timing is read from the left hemisphere only. The combined mask is
+    a consumed fixed-effects intermediate, included when one was created.
 
     Returns a de-duplicated, deterministically sorted list of Paths.
     """
+    keys, timing_key = _consumed_file_keys(space)
     collected: set = set()
     for runs in files.values():
         for run_files in runs.values():
-            for key in _INPUT_FILE_KEYS:
+            for key in keys:
                 path = run_files.get(key)
                 if path is not None:
                     collected.add(Path(path))
+            timing_bold = run_files.get(timing_key)
+            if timing_bold is not None:
+                sidecar = sidecar_path_for(timing_bold)
+                if sidecar.is_file():
+                    collected.add(sidecar)
+    if combined_mask_path is not None:
+        collected.add(Path(combined_mask_path))
     return sorted(collected, key=str)
+
+
+def _residual_metadata(args):
+    """Describe existing CLI residual calculations without affecting execution."""
+    if not getattr(args, "residuals", False):
+        return {"requested": False}
+    volume = not (is_surface_space(args.space) or is_cifti_space(args.space))
+    no_filter = getattr(args, "no_residual_filter", False)
+    return {
+        "requested": True,
+        "definition": "Y - X @ beta (unwhitened design)",
+        "units": "percent signal change" if volume else "input BOLD units",
+        "signal_scaling": "100 * (Y / max(mean(Y), 1) - 1)" if volume else None,
+        "filtering": {
+            "method": None if no_filter else "Butterworth",
+            "high_pass_hz": None if no_filter else 0.01,
+            "low_pass_hz": None if no_filter else 0.1,
+            "detrend": False,
+            "standardize": False,
+        },
+        "fc_confounds_requested": getattr(args, "fc_confounds", False),
+        "processing_order": "GLM residual extraction, then optional filtering/FC confound regression via nilearn clean",
+        # Motion spikes remain design columns; output frames are not censored.
+        "sample_mask": None,
+    }
 
 
 def _write_lev1_provenance(results_dir, args, dirs, input_files):
@@ -251,7 +291,7 @@ def _write_lev1_provenance(results_dir, args, dirs, input_files):
             {"URL": str(args.fmriprep_dir)},
         ],
     )
-    provenance.write_run_manifest(
+    manifest_path = provenance.write_run_manifest(
         dirs["base"],
         stage="lev1",
         args=args,
@@ -259,6 +299,9 @@ def _write_lev1_provenance(results_dir, args, dirs, input_files):
         exclusions_source=args.exclusions_file,
         allow_dirty=allow_dirty,
     )
+    manifest = json.loads(manifest_path.read_text())
+    manifest["residuals"] = _residual_metadata(args)
+    manifest_path.write_text(json.dumps(manifest, indent=2))
 
 
 def main(argv=None):
@@ -335,7 +378,7 @@ def main(argv=None):
         Path(args.results_dir),
         args,
         dirs,
-        _collect_run_inputs(files),
+        _collect_run_inputs(files, args.space, combined_mask_path=combined_mask_path),
     )
 
     # Summary
