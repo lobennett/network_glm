@@ -13,6 +13,7 @@ import json
 import re
 import subprocess
 import sys
+import zlib
 from pathlib import Path
 from uuid import uuid4
 
@@ -29,7 +30,7 @@ def _load_group_image(path, *, reference=None, shape=None):
     try:
         img = nib.load(path)
         data = img.get_fdata()
-    except (OSError, EOFError, ValueError, nib.filebasedimages.ImageFileError) as exc:
+    except (OSError, EOFError, ValueError, zlib.error, nib.filebasedimages.ImageFileError) as exc:
         raise ValueError(f"Unreadable group image {path}: {exc}") from exc
     if (shape is None and img.ndim != 3) or (shape is not None and img.shape != shape):
         raise ValueError(f"Invalid shape {img.shape} in {path}; expected {shape or '3D'}")
@@ -390,7 +391,7 @@ def run_level2_analysis(
         return False
 
     # Both generated invocations must produce their expected scientific product.
-    # Validate every NIfTI the attempt produced, including optional FSL maps.
+    # Only these four products have contracts here; optional FSL maps may vary.
     try:
         products = {
             attempt_dir / name for name in (
@@ -398,7 +399,6 @@ def run_level2_analysis(
                 "group_mask.nii.gz", "input_data4d.nii.gz",
             )
         }
-        products.update(attempt_dir.glob("*.nii.gz"))
         for path in sorted(products):
             shape = (
                 (*group_mask_img.shape, len(input_files))
@@ -410,7 +410,11 @@ def run_level2_analysis(
         return False
 
     if provenance_args is not None:
-        _write_lev2_provenance(attempt_dir, provenance_args, level1_dirs or [], input_files)
+        # The volume CLI warns and proceeds on dirty source. Preserve the real
+        # args and code_dirty stamp without rejecting otherwise valid products.
+        _write_lev2_provenance(
+            attempt_dir, provenance_args, level1_dirs or [], input_files, allow_dirty=True,
+        )
 
     # The helper writes absolute preparation paths. Relocate those paths so the
     # published script still refers to its own mask/design/data, keeping all flags.
@@ -523,7 +527,7 @@ def _warn_if_inconsistent_inputs(input_provenance: dict) -> None:
     )
 
 
-def _write_lev2_provenance(output_dir, args, level1_dirs, input_files):
+def _write_lev2_provenance(output_dir, args, level1_dirs, input_files, *, allow_dirty=None):
     """Write additive provenance for a lev2 contrast run.
 
     - ``dataset_description.json`` at ``output_dir``, naming the lev1 source
@@ -536,10 +540,12 @@ def _write_lev2_provenance(output_dir, args, level1_dirs, input_files):
       (mixed exclusion sets / code versions / configs). Selection is unchanged.
 
     Called after the scientific products are written, within the fresh attempt
-    for volume runs. Errors surface before publication. ``allow_dirty`` is
-    threaded from the CLI flag.
+    for volume runs. Errors surface before publication. By default ``allow_dirty``
+    follows the CLI flag; the staged volume caller explicitly permits recording
+    dirty source to preserve its documented warn-and-proceed policy.
     """
-    allow_dirty = getattr(args, "allow_dirty", False)
+    if allow_dirty is None:
+        allow_dirty = getattr(args, "allow_dirty", False)
     provenance.write_dataset_description(
         output_dir,
         name="lev2",

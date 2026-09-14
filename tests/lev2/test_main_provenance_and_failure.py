@@ -44,7 +44,7 @@ def test_main_writes_provenance_into_per_contrast_dir(tmp_path, monkeypatch, fak
 
     captured = {}
 
-    def _spy_prov(output_dir, args, level1_dirs, input_files):
+    def _spy_prov(output_dir, args, level1_dirs, input_files, **kwargs):
         captured["dir"] = Path(output_dir)
 
     monkeypatch.setattr(lev2_run, "_write_lev2_provenance", _spy_prov)
