@@ -1,4 +1,4 @@
-"""Offline numerical audit: uv run --frozen python docs/audit_residuals.py."""
+"""Offline numerical audit: uv run --frozen python scripts/audit_residuals.py."""
 
 import json
 

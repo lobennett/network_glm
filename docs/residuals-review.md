@@ -58,7 +58,7 @@ separate from the original-coordinate residual reconstruction fix.
 Run the offline audit from the repository root:
 
 ```bash
-uv run --frozen python docs/audit_residuals.py
+uv run --frozen python scripts/audit_residuals.py
 uv run --frozen pytest -q
 ```
 

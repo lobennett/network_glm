@@ -31,7 +31,7 @@ TASK_COEFFICIENTS = {
 
 
 def _run_recipe(namespace):
-    document = Path(__file__).resolve().parents[2] / "docs/DIAGNOSTIC-CONTRASTS.md"
+    document = Path(__file__).resolve().parents[2] / "docs/diagnostic-contrasts.md"
     assert document.is_file(), "The executable diagnostic recipe must be published"
     source = document.read_text().split("```python\n", 1)[1].split("```", 1)[0]
     exec(compile(source, str(document), "exec"), namespace)

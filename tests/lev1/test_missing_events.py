@@ -1,8 +1,4 @@
-"""Missing events.tsv handling: skip-with-warning, never crash.
-
-Spec (`docs/archive/superpowers/specs/2026-05-06-lev1-audit-design.md`):
-"scan with events.tsv missing -> caller (run.py) skips with a logger warning;
-downstream gets nothing for that scan; no crash."
+"""Missing events.tsv handling: skip with a warning rather than crashing.
 
 `FileFinder.get_files()` already drops runs that lack any required file via
 `_filter_complete_runs`, so lev1 will not crash. The gap surfaced by Task 14

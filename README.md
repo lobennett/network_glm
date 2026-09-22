@@ -15,6 +15,9 @@ uv sync --frozen
 uv run --frozen network-glm --help
 ```
 
+On Sherlock, load `devel` and `gcc/12.4.0` before syncing so current NumPy
+wheels use a compatible C++ runtime.
+
 FSL is required for volume-level permutation tests. FreeSurfer is required for
 surface smoothing. These licensed tools are loaded by `network_fmri` on
 Sherlock and are not installed by this package.
@@ -67,13 +70,13 @@ Use `--residuals` to save task residuals, `--fc-confounds` to regress global,
 white-matter, and CSF signals, and `--no-residual-filter` to skip the 0.01–0.1
 Hz filter. The tissue and global-signal regression follows the task fit, so it
 is not equivalent to one joint regression. See
-[Residual validation](docs/RESIDUALS-REVIEW.md) for the numerical audit.
+[Residual validation](docs/residuals-review.md) for the numerical audit.
 
 Task definitions live in `src/network_glm/task_config/`. The order in
 `battery.yaml` defines the task-group options. Go/no-go trial regressors
 require `trial_id == "test_trial"`, preventing labeled break rows from being
 treated as trials. Optional constituent-condition and dual-task RT maps use the
-[diagnostic contrast recipe](docs/DIAGNOSTIC-CONTRASTS.md).
+[diagnostic contrast recipe](docs/diagnostic-contrasts.md).
 
 ## Outputs
 
